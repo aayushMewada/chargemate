@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chargemate"
+version = "0.1.0"
+description = "A secure EV charging station discovery, booking, and payment platform."
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "Flask>=3.1.3,<4.0",
+]
+
+[project.urls]
+Repository = "https://github.com/aayushMewada/chargemate"
+
+[tool.setuptools.packages.find]
+where = ["src"]
