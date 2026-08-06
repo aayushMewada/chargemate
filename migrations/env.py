@@ -51,6 +51,19 @@ def get_metadata():
     return target_db.metadata
 
 
+def include_object(_object, _name, type_, reflected, compare_to):
+    """Ignore database tables that are not managed by our models.
+
+    PostGIS creates its own tables. Without this guard, Alembic can mistake
+    those extension-owned tables for removed application tables and generate
+    destructive drop operations.
+    """
+    if type_ == 'table' and reflected and compare_to is None:
+        return False
+
+    return True
+
+
 def run_migrations_offline():
     """Run migrations in 'offline' mode.
 
@@ -93,6 +106,7 @@ def run_migrations_online():
     conf_args = current_app.extensions['migrate'].configure_args
     if conf_args.get("process_revision_directives") is None:
         conf_args["process_revision_directives"] = process_revision_directives
+    conf_args.setdefault("include_object", include_object)
 
     connectable = get_engine()
 

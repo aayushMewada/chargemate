@@ -1,5 +1,6 @@
 from flask import Flask
 
+from chargemate import models  # noqa: F401
 from chargemate.config import BaseConfig, get_config
 from chargemate.extensions import init_extensions
 from chargemate.health import health_blueprint
