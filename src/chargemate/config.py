@@ -29,6 +29,8 @@ class TestingConfig(BaseConfig):
 
     TESTING = True
     SECRET_KEY = "testing-only-secret-key"
+    SQLALCHEMY_DATABASE_URI = "sqlite+pysqlite:///:memory:"
+    REDIS_URL = "redis://localhost:6379/15"
 
 
 class ProductionConfig(BaseConfig):
