@@ -1,12 +1,17 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, SmallInteger, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from chargemate.extensions import db
 from chargemate.models.base import TimestampMixin, UUIDPrimaryKeyMixin
+
+
+if TYPE_CHECKING:
+    from chargemate.models.auth_session import AuthSession
 
 
 class UserRole(StrEnum):
@@ -61,6 +66,11 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
         server_default="0",
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auth_sessions: Mapped[list["AuthSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def set_password(self, password: str) -> None:
         """Replace the user's stored password with a salted one-way hash."""

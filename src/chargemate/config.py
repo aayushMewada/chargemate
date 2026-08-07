@@ -10,12 +10,18 @@ class BaseConfig:
     """Configuration shared by every application environment."""
 
     SECRET_KEY = os.getenv("SECRET_KEY")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     REDIS_URL = os.getenv("REDIS_URL")
 
     LOGIN_MAX_FAILED_ATTEMPTS = 5
     LOGIN_LOCKOUT_MINUTES = 15
+    JWT_ACCESS_TOKEN_MINUTES = 15
+    JWT_REFRESH_TOKEN_DAYS = 30
+    JWT_ALGORITHM = "HS256"
+    JWT_ISSUER = "chargemate-api"
+    JWT_AUDIENCE = "chargemate-client"
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
@@ -32,6 +38,7 @@ class TestingConfig(BaseConfig):
 
     TESTING = True
     SECRET_KEY = "testing-only-secret-key"
+    JWT_SECRET_KEY = "testing-only-jwt-secret-key-at-least-32-bytes"
     SQLALCHEMY_DATABASE_URI = "sqlite+pysqlite:///:memory:"
     REDIS_URL = "redis://localhost:6379/15"
 
@@ -63,6 +70,7 @@ def get_config() -> type[BaseConfig]:
 
     required_values = {
         "SECRET_KEY": configuration.SECRET_KEY,
+        "JWT_SECRET_KEY": configuration.JWT_SECRET_KEY,
         "DATABASE_URL": configuration.SQLALCHEMY_DATABASE_URI,
         "REDIS_URL": configuration.REDIS_URL,
     }
