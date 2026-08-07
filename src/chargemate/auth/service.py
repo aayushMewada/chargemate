@@ -215,6 +215,47 @@ def rotate_auth_session(raw_refresh_token: str) -> IssuedSessionTokens:
     return issued_tokens
 
 
+def revoke_auth_session(session_id: UUID, user_id: UUID) -> bool:
+    """Idempotently revoke one session owned by the authenticated user."""
+    try:
+        session = db.session.scalar(
+            select(AuthSession)
+            .where(
+                AuthSession.id == session_id,
+                AuthSession.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        was_revoked = session is not None and not session.is_revoked
+        if was_revoked:
+            session.revoked_at = datetime.now(UTC)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return was_revoked
+
+
+def revoke_all_auth_sessions(user_id: UUID) -> int:
+    """Revoke every active refresh session belonging to one user."""
+    try:
+        result = db.session.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(UTC))
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return result.rowcount
+
+
 def _is_account_locked(user: User, now: datetime) -> bool:
     """Return whether the user's lockout time is still in the future."""
     if user.locked_until is None:

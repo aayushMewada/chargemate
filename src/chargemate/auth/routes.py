@@ -1,8 +1,10 @@
 from typing import Any
+from uuid import UUID
 
-from flask import Blueprint, Response, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request
 from pydantic import ValidationError
 
+from chargemate.auth.decorators import access_token_required
 from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
 from chargemate.auth.service import (
     AuthenticationError,
@@ -12,6 +14,8 @@ from chargemate.auth.service import (
     authenticate_user,
     create_auth_session,
     register_user,
+    revoke_all_auth_sessions,
+    revoke_auth_session,
     rotate_auth_session,
 )
 from chargemate.auth.tokens import IssuedRefreshToken
@@ -113,6 +117,36 @@ def refresh() -> Response | tuple[dict[str, Any], int]:
         return response
 
     return _token_response(issued.session.user, issued)
+
+
+@auth_blueprint.get("/me")
+@access_token_required
+def current_user() -> tuple[dict[str, Any], int]:
+    """Return the safe profile of the authenticated user."""
+    return {"user": _serialize_user(g.current_user)}, 200
+
+
+@auth_blueprint.post("/logout")
+@access_token_required
+def logout() -> Response:
+    """Revoke the current login session and remove its refresh cookie."""
+    revoke_auth_session(
+        UUID(g.access_claims["sid"]),
+        g.current_user.id,
+    )
+    response = Response(status=204)
+    _clear_refresh_cookie(response)
+    return response
+
+
+@auth_blueprint.post("/logout-all")
+@access_token_required
+def logout_all() -> Response:
+    """Revoke every refresh session owned by the authenticated user."""
+    revoke_all_auth_sessions(g.current_user.id)
+    response = Response(status=204)
+    _clear_refresh_cookie(response)
+    return response
 
 
 def _token_response(user: User, issued: IssuedSessionTokens) -> Response:
