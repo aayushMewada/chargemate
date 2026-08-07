@@ -9,6 +9,7 @@ from chargemate.extensions import db
 from chargemate.models.charge_point import ChargePoint, ChargePointStatus
 from chargemate.models.station import ChargingStation, StationStatus
 from chargemate.models.user import User
+from chargemate.stations.cache import invalidate_station_searches
 from chargemate.stations.schemas import StationCreateRequest, StationSearchQuery
 from chargemate.stations.spatial import (
     METRES_PER_KILOMETRE,
@@ -60,6 +61,7 @@ def create_station(owner: User, payload: StationCreateRequest) -> ChargingStatio
         db.session.rollback()
         raise
 
+    invalidate_station_searches()
     return station
 
 

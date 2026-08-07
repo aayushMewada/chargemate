@@ -7,6 +7,10 @@ from chargemate.auth.decorators import roles_required
 from chargemate.models.charge_point import ChargePoint
 from chargemate.models.station import ChargingStation
 from chargemate.models.user import UserRole
+from chargemate.stations.cache import (
+    get_cached_station_search,
+    store_station_search,
+)
 from chargemate.stations.schemas import StationCreateRequest, StationSearchQuery
 from chargemate.stations.service import (
     StationConflictError,
@@ -28,8 +32,12 @@ def list_charging_stations():
     except ValidationError as error:
         return _validation_error_response(error)
 
+    cache_key, cached_response = get_cached_station_search(query)
+    if cached_response is not None:
+        return cached_response, 200
+
     station_page = find_public_stations(query)
-    return {
+    response_body = {
         "stations": [
             _serialize_station(
                 result.station,
@@ -46,7 +54,9 @@ def list_charging_stations():
             )
             // station_page.per_page,
         },
-    }, 200
+    }
+    store_station_search(cache_key, response_body)
+    return response_body, 200
 
 
 @stations_blueprint.get("/<uuid:station_id>")

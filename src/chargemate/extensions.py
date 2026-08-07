@@ -33,5 +33,7 @@ def init_extensions(app: Flask) -> None:
     redis_client = Redis.from_url(
         app.config["REDIS_URL"],
         decode_responses=True,
+        socket_connect_timeout=1,
+        socket_timeout=1,
     )
     app.extensions["redis"] = redis_client
