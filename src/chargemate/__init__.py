@@ -2,6 +2,7 @@ from flask import Flask
 
 from chargemate import models  # noqa: F401
 from chargemate.auth.routes import auth_blueprint
+from chargemate.stations.routes import stations_blueprint
 from chargemate.config import BaseConfig, get_config
 from chargemate.extensions import init_extensions
 from chargemate.health import health_blueprint
@@ -13,5 +14,6 @@ def create_app(config: type[BaseConfig] | None = None) -> Flask:
     app.config.from_object(config or get_config())
     init_extensions(app)
     app.register_blueprint(auth_blueprint)
+    app.register_blueprint(stations_blueprint)
     app.register_blueprint(health_blueprint)
     return app
