@@ -4,8 +4,13 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
-from chargemate.auth.schemas import RegisterUserRequest
-from chargemate.auth.service import RegistrationConflictError, register_user
+from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
+from chargemate.auth.service import (
+    AuthenticationError,
+    RegistrationConflictError,
+    authenticate_user,
+    register_user,
+)
 from chargemate.extensions import db
 from chargemate.models.user import User, UserRole
 
@@ -21,6 +26,14 @@ def registration_data(**overrides: str | None) -> RegisterUserRequest:
     }
     values.update(overrides)
     return RegisterUserRequest(**values)
+
+
+def login_data(
+    identifier: str = "driver@example.com",
+    password: str = "a-long-test-password",
+) -> LoginRequest:
+    """Build validated login credentials."""
+    return LoginRequest(identifier=identifier, password=password)
 
 
 def test_register_user_persists_user_and_hashes_password(db_app) -> None:
@@ -68,3 +81,55 @@ def test_register_user_translates_concurrent_unique_violation(
 
     with pytest.raises(RegistrationConflictError):
         register_user(registration_data())
+
+
+def test_authenticate_user_accepts_valid_credentials(db_app) -> None:
+    register_user(registration_data())
+    db.session.remove()
+
+    user = authenticate_user(login_data(identifier="driver_one"))
+
+    assert user.email == "driver@example.com"
+    assert user.failed_login_attempts == 0
+    assert user.locked_until is None
+
+
+def test_authenticate_user_records_failed_password(db_app) -> None:
+    register_user(registration_data())
+    db.session.remove()
+
+    with pytest.raises(AuthenticationError):
+        authenticate_user(login_data(password="incorrect-password"))
+
+    user = db.session.scalar(
+        select(User).where(User.email == "driver@example.com")
+    )
+    assert user is not None
+    assert user.failed_login_attempts == 1
+    assert user.locked_until is None
+
+
+def test_authenticate_user_locks_account_after_five_failures(db_app) -> None:
+    register_user(registration_data())
+    db.session.remove()
+
+    for _ in range(5):
+        with pytest.raises(AuthenticationError):
+            authenticate_user(login_data(password="incorrect-password"))
+
+    with pytest.raises(AuthenticationError):
+        authenticate_user(login_data())
+
+    user = db.session.scalar(
+        select(User).where(User.email == "driver@example.com")
+    )
+    assert user is not None
+    assert user.failed_login_attempts == 5
+    assert user.locked_until is not None
+
+
+def test_authenticate_user_hides_unknown_accounts(db_app) -> None:
+    with pytest.raises(AuthenticationError) as error:
+        authenticate_user(login_data(identifier="missing@example.com"))
+
+    assert str(error.value) == "Invalid identifier or password."

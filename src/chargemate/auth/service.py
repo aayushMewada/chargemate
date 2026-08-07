@@ -1,7 +1,11 @@
+from datetime import UTC, datetime, timedelta
+
+from flask import current_app
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
+from werkzeug.security import check_password_hash, generate_password_hash
 
-from chargemate.auth.schemas import RegisterUserRequest
+from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
 from chargemate.extensions import db
 from chargemate.models.user import User
 
@@ -12,9 +16,18 @@ USER_IDENTITY_CONSTRAINTS = {
     "uq_users_username",
 }
 
+DUMMY_PASSWORD_HASH = generate_password_hash(
+    "not-a-real-user-password",
+    method="scrypt",
+)
+
 
 class RegistrationConflictError(Exception):
     """Raised when registration identifiers already belong to a user."""
+
+
+class AuthenticationError(Exception):
+    """Raised when credentials cannot authenticate an active user."""
 
 
 def register_user(data: RegisterUserRequest) -> User:
@@ -58,3 +71,70 @@ def register_user(data: RegisterUserRequest) -> User:
         raise
 
     return user
+
+
+def authenticate_user(data: LoginRequest) -> User:
+    """Verify credentials and update the user's login security state."""
+    identifier = data.identifier
+    password = data.password.get_secret_value()
+    now = datetime.now(UTC)
+    authenticated_user: User | None = None
+    authentication_failed = False
+
+    with db.session.begin():
+        user = db.session.scalar(
+            select(User).where(
+                or_(
+                    User.email == identifier,
+                    User.username == identifier,
+                )
+            )
+        )
+
+        if user is None:
+            check_password_hash(DUMMY_PASSWORD_HASH, password)
+            authentication_failed = True
+        else:
+            password_matches = user.check_password(password)
+
+            if _is_account_locked(user, now) or not user.is_active:
+                authentication_failed = True
+            else:
+                if user.locked_until is not None:
+                    user.failed_login_attempts = 0
+                    user.locked_until = None
+
+                if not password_matches:
+                    _record_failed_login(user, now)
+                    authentication_failed = True
+                else:
+                    user.failed_login_attempts = 0
+                    user.locked_until = None
+                    authenticated_user = user
+
+    if authentication_failed or authenticated_user is None:
+        raise AuthenticationError("Invalid identifier or password.")
+
+    return authenticated_user
+
+
+def _is_account_locked(user: User, now: datetime) -> bool:
+    """Return whether the user's lockout time is still in the future."""
+    if user.locked_until is None:
+        return False
+
+    locked_until = user.locked_until
+    if locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=UTC)
+
+    return locked_until > now
+
+
+def _record_failed_login(user: User, now: datetime) -> None:
+    """Increment failures and lock the account when the limit is reached."""
+    user.failed_login_attempts += 1
+    maximum_attempts = current_app.config["LOGIN_MAX_FAILED_ATTEMPTS"]
+
+    if user.failed_login_attempts >= maximum_attempts:
+        lockout_minutes = current_app.config["LOGIN_LOCKOUT_MINUTES"]
+        user.locked_until = now + timedelta(minutes=lockout_minutes)

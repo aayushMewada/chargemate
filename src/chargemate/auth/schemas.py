@@ -1,6 +1,13 @@
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    SecretStr,
+    field_validator,
+)
 
 
 class RegisterUserRequest(BaseModel):
@@ -43,4 +50,21 @@ class RegisterUserRequest(BaseModel):
         if isinstance(value, str):
             value = value.strip()
             return value or None
+        return value
+
+
+class LoginRequest(BaseModel):
+    """Validated credentials accepted by the login endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    identifier: Annotated[str, Field(min_length=3, max_length=255)]
+    password: Annotated[SecretStr, Field(min_length=1, max_length=128)]
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def normalize_identifier(cls, value: Any) -> Any:
+        """Normalize either an email address or username for lookup."""
+        if isinstance(value, str):
+            return value.strip().lower()
         return value
