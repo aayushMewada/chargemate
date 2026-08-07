@@ -109,3 +109,30 @@ class StationSearchQuery(BaseModel):
     @property
     def has_spatial_filter(self) -> bool:
         return self.latitude is not None
+
+
+class ExternalStationSearchQuery(BaseModel):
+    """Bounded nearby search accepted by the external-station endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    latitude: Decimal = Field(
+        ge=-90,
+        le=90,
+        max_digits=9,
+        decimal_places=6,
+    )
+    longitude: Decimal = Field(
+        ge=-180,
+        le=180,
+        max_digits=9,
+        decimal_places=6,
+    )
+    radius_km: Decimal = Field(
+        default=25,
+        gt=0,
+        le=100,
+        max_digits=5,
+        decimal_places=2,
+    )
+    max_results: int = Field(default=50, ge=1, le=100)

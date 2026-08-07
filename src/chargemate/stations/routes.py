@@ -1,17 +1,25 @@
 from decimal import Decimal
 
-from flask import Blueprint, g, request
+from flask import Blueprint, current_app, g, request
 from pydantic import ValidationError
 
 from chargemate.auth.decorators import roles_required
 from chargemate.models.charge_point import ChargePoint
 from chargemate.models.station import ChargingStation
 from chargemate.models.user import UserRole
+from chargemate.stations.external_service import find_external_stations
+from chargemate.stations.providers.open_charge_map import (
+    ExternalStationProviderError,
+)
 from chargemate.stations.cache import (
     get_cached_station_search,
     store_station_search,
 )
-from chargemate.stations.schemas import StationCreateRequest, StationSearchQuery
+from chargemate.stations.schemas import (
+    ExternalStationSearchQuery,
+    StationCreateRequest,
+    StationSearchQuery,
+)
 from chargemate.stations.service import (
     StationConflictError,
     create_station,
@@ -21,6 +29,33 @@ from chargemate.stations.service import (
 
 
 stations_blueprint = Blueprint("stations", __name__, url_prefix="/stations")
+
+
+@stations_blueprint.get("/external")
+def list_external_charging_stations():
+    """Return normalized open-data charging locations near a coordinate."""
+
+    try:
+        query = ExternalStationSearchQuery.model_validate(request.args)
+        stations = find_external_stations(query)
+    except ValidationError as error:
+        return _validation_error_response(error)
+    except ExternalStationProviderError:
+        current_app.logger.warning(
+            "External charging-station provider is unavailable."
+        )
+        return {
+            "error": {
+                "code": "external_station_provider_unavailable",
+                "message": "External charging stations are temporarily unavailable.",
+            }
+        }, 503
+
+    return {
+        "stations": stations,
+        "source": "open_charge_map",
+        "bookable": False,
+    }, 200
 
 
 @stations_blueprint.get("")
