@@ -1,3 +1,4 @@
+from uuid import UUID
 from types import SimpleNamespace
 
 import pytest
@@ -9,9 +10,12 @@ from chargemate.auth.service import (
     AuthenticationError,
     RegistrationConflictError,
     authenticate_user,
+    create_auth_session,
     register_user,
 )
+from chargemate.auth.tokens import decode_access_token
 from chargemate.extensions import db
+from chargemate.models.auth_session import AuthSession
 from chargemate.models.user import User, UserRole
 
 
@@ -133,3 +137,23 @@ def test_authenticate_user_hides_unknown_accounts(db_app) -> None:
         authenticate_user(login_data(identifier="missing@example.com"))
 
     assert str(error.value) == "Invalid identifier or password."
+
+
+def test_create_auth_session_stores_only_refresh_digest(db_app) -> None:
+    user = register_user(registration_data())
+
+    issued = create_auth_session(user)
+    claims = decode_access_token(issued.access_token.value)
+    session_id = UUID(claims["sid"])
+    user_id = UUID(claims["sub"])
+
+    db.session.remove()
+    stored_session = db.session.scalar(
+        select(AuthSession).where(AuthSession.id == session_id)
+    )
+
+    assert stored_session is not None
+    assert stored_session.user_id == user_id
+    assert stored_session.token_hash == issued.refresh_token.digest
+    assert stored_session.token_hash != issued.refresh_token.value
+    assert claims["sub"] == str(user_id)

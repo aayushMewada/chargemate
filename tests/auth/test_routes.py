@@ -88,8 +88,19 @@ def test_login_endpoint_accepts_email_or_username(client: FlaskClient) -> None:
 
     assert email_response.status_code == 200
     assert username_response.status_code == 200
-    assert email_response.get_json()["user"]["email"] == "driver@example.com"
-    assert "password_hash" not in email_response.get_json()["user"]
+    body = email_response.get_json()
+    assert body["user"]["email"] == "driver@example.com"
+    assert body["token_type"] == "Bearer"
+    assert body["expires_in"] == 900
+    assert body["access_token"]
+    assert "refresh_token" not in body
+    assert "password_hash" not in body["user"]
+
+    refresh_cookie = email_response.headers["Set-Cookie"]
+    assert "refresh_token=" in refresh_cookie
+    assert "HttpOnly" in refresh_cookie
+    assert "Path=/auth" in refresh_cookie
+    assert "SameSite=Lax" in refresh_cookie
 
 
 def test_login_endpoint_returns_same_error_for_invalid_identity(

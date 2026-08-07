@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from flask import current_app
@@ -6,7 +7,14 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
+from chargemate.auth.tokens import (
+    IssuedAccessToken,
+    IssuedRefreshToken,
+    issue_access_token,
+    issue_refresh_token,
+)
 from chargemate.extensions import db
+from chargemate.models.auth_session import AuthSession
 from chargemate.models.user import User
 
 
@@ -28,6 +36,15 @@ class RegistrationConflictError(Exception):
 
 class AuthenticationError(Exception):
     """Raised when credentials cannot authenticate an active user."""
+
+
+@dataclass(frozen=True, slots=True)
+class IssuedSessionTokens:
+    """The persisted session and tokens created for one successful login."""
+
+    session: AuthSession
+    access_token: IssuedAccessToken
+    refresh_token: IssuedRefreshToken
 
 
 def register_user(data: RegisterUserRequest) -> User:
@@ -116,6 +133,23 @@ def authenticate_user(data: LoginRequest) -> User:
         raise AuthenticationError("Invalid identifier or password.")
 
     return authenticated_user
+
+
+def create_auth_session(user: User) -> IssuedSessionTokens:
+    """Persist a refresh session and issue its initial token pair."""
+    refresh_token = issue_refresh_token()
+
+    with db.session.begin():
+        session = AuthSession(
+            user=user,
+            token_hash=refresh_token.digest,
+            expires_at=refresh_token.expires_at,
+        )
+        db.session.add(session)
+        db.session.flush()
+        access_token = issue_access_token(user, session.id)
+
+    return IssuedSessionTokens(session, access_token, refresh_token)
 
 
 def _is_account_locked(user: User, now: datetime) -> bool:

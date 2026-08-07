@@ -1,6 +1,6 @@
 from typing import Any
 
-from flask import Blueprint, request
+from flask import Blueprint, Response, current_app, jsonify, request
 from pydantic import ValidationError
 
 from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
@@ -8,8 +8,10 @@ from chargemate.auth.service import (
     AuthenticationError,
     RegistrationConflictError,
     authenticate_user,
+    create_auth_session,
     register_user,
 )
+from chargemate.auth.tokens import IssuedRefreshToken
 from chargemate.models.user import User
 
 
@@ -48,7 +50,7 @@ def register() -> tuple[dict[str, Any], int]:
 
 
 @auth_blueprint.post("/login")
-def login() -> tuple[dict[str, Any], int]:
+def login() -> Response | tuple[dict[str, Any], int]:
     """Authenticate a user from an email address or username."""
     if not request.is_json:
         return _error_response(
@@ -75,7 +77,19 @@ def login() -> tuple[dict[str, Any], int]:
     except AuthenticationError as error:
         return _error_response("invalid_credentials", str(error), 401)
 
-    return {"user": _serialize_user(user)}, 200
+    issued = create_auth_session(user)
+    response = jsonify(
+        {
+            "access_token": issued.access_token.value,
+            "token_type": "Bearer",
+            "expires_in": (
+                current_app.config["JWT_ACCESS_TOKEN_MINUTES"] * 60
+            ),
+            "user": _serialize_user(user),
+        }
+    )
+    _set_refresh_cookie(response, issued.refresh_token)
+    return response
 
 
 def _serialize_user(user: User) -> dict[str, Any]:
@@ -120,3 +134,19 @@ def _validation_error_response(
             "details": details,
         }
     }, 422
+
+
+def _set_refresh_cookie(
+    response: Response,
+    refresh_token: IssuedRefreshToken,
+) -> None:
+    """Store a refresh token using the configured browser protections."""
+    response.set_cookie(
+        key=current_app.config["REFRESH_COOKIE_NAME"],
+        value=refresh_token.value,
+        expires=refresh_token.expires_at,
+        httponly=current_app.config["REFRESH_COOKIE_HTTPONLY"],
+        secure=current_app.config["REFRESH_COOKIE_SECURE"],
+        samesite=current_app.config["REFRESH_COOKIE_SAMESITE"],
+        path=current_app.config["REFRESH_COOKIE_PATH"],
+    )

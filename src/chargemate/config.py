@@ -23,6 +23,12 @@ class BaseConfig:
     JWT_ISSUER = "chargemate-api"
     JWT_AUDIENCE = "chargemate-client"
 
+    REFRESH_COOKIE_NAME = "refresh_token"
+    REFRESH_COOKIE_PATH = "/auth"
+    REFRESH_COOKIE_HTTPONLY = True
+    REFRESH_COOKIE_SECURE = False
+    REFRESH_COOKIE_SAMESITE = "Lax"
+
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
 
@@ -47,6 +53,7 @@ class ProductionConfig(BaseConfig):
     """Configuration used by the deployed application."""
 
     SESSION_COOKIE_SECURE = True
+    REFRESH_COOKIE_SECURE = True
 
 
 CONFIGURATIONS: dict[str, type[BaseConfig]] = {
