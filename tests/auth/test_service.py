@@ -9,9 +9,11 @@ from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
 from chargemate.auth.service import (
     AuthenticationError,
     RegistrationConflictError,
+    RefreshTokenError,
     authenticate_user,
     create_auth_session,
     register_user,
+    rotate_auth_session,
 )
 from chargemate.auth.tokens import decode_access_token
 from chargemate.extensions import db
@@ -157,3 +159,50 @@ def test_create_auth_session_stores_only_refresh_digest(db_app) -> None:
     assert stored_session.token_hash == issued.refresh_token.digest
     assert stored_session.token_hash != issued.refresh_token.value
     assert claims["sub"] == str(user_id)
+
+
+def test_rotate_auth_session_revokes_old_and_creates_replacement(db_app) -> None:
+    user = register_user(registration_data())
+    initial = create_auth_session(user)
+    initial_claims = decode_access_token(initial.access_token.value)
+    initial_session_id = UUID(initial_claims["sid"])
+
+    db.session.remove()
+    rotated = rotate_auth_session(initial.refresh_token.value)
+    rotated_claims = decode_access_token(rotated.access_token.value)
+    replacement_session_id = UUID(rotated_claims["sid"])
+
+    db.session.remove()
+    initial_session = db.session.get(AuthSession, initial_session_id)
+    replacement_session = db.session.get(AuthSession, replacement_session_id)
+
+    assert initial_session is not None
+    assert replacement_session is not None
+    assert initial_session.is_revoked
+    assert initial_session.last_used_at is not None
+    assert initial_session.replaced_by_id == replacement_session.id
+    assert replacement_session.family_id == initial_session.family_id
+    assert not replacement_session.is_revoked
+    assert replacement_session.token_hash == rotated.refresh_token.digest
+
+
+def test_rotate_auth_session_revokes_family_when_old_token_is_reused(
+    db_app,
+) -> None:
+    user = register_user(registration_data())
+    initial = create_auth_session(user)
+
+    db.session.remove()
+    rotated = rotate_auth_session(initial.refresh_token.value)
+    replacement_session_id = UUID(
+        decode_access_token(rotated.access_token.value)["sid"]
+    )
+
+    db.session.remove()
+    with pytest.raises(RefreshTokenError):
+        rotate_auth_session(initial.refresh_token.value)
+
+    db.session.remove()
+    replacement_session = db.session.get(AuthSession, replacement_session_id)
+    assert replacement_session is not None
+    assert replacement_session.is_revoked

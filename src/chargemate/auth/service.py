@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from flask import current_app
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -10,6 +11,7 @@ from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
 from chargemate.auth.tokens import (
     IssuedAccessToken,
     IssuedRefreshToken,
+    hash_refresh_token,
     issue_access_token,
     issue_refresh_token,
 )
@@ -36,6 +38,10 @@ class RegistrationConflictError(Exception):
 
 class AuthenticationError(Exception):
     """Raised when credentials cannot authenticate an active user."""
+
+
+class RefreshTokenError(Exception):
+    """Raised when a refresh token cannot produce a new token pair."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +158,63 @@ def create_auth_session(user: User) -> IssuedSessionTokens:
     return IssuedSessionTokens(session, access_token, refresh_token)
 
 
+def rotate_auth_session(raw_refresh_token: str) -> IssuedSessionTokens:
+    """Rotate an active refresh session and detect revoked-token reuse."""
+    now = datetime.now(UTC)
+    token_hash = hash_refresh_token(raw_refresh_token)
+    issued_tokens: IssuedSessionTokens | None = None
+    refresh_failed = False
+
+    with db.session.begin():
+        session = db.session.scalar(
+            select(AuthSession)
+            .where(AuthSession.token_hash == token_hash)
+            .with_for_update()
+        )
+
+        if session is None:
+            refresh_failed = True
+        elif session.is_revoked:
+            _revoke_token_family(session.family_id, now)
+            refresh_failed = True
+        elif _is_expired(session.expires_at, now):
+            session.revoked_at = now
+            refresh_failed = True
+        elif not session.user.is_active:
+            _revoke_token_family(session.family_id, now)
+            refresh_failed = True
+        else:
+            replacement_token = issue_refresh_token(now=now)
+            replacement_session = AuthSession(
+                user_id=session.user_id,
+                token_hash=replacement_token.digest,
+                family_id=session.family_id,
+                expires_at=replacement_token.expires_at,
+            )
+            db.session.add(replacement_session)
+            db.session.flush()
+
+            session.revoked_at = now
+            session.last_used_at = now
+            session.replaced_by_id = replacement_session.id
+
+            access_token = issue_access_token(
+                session.user,
+                replacement_session.id,
+                now=now,
+            )
+            issued_tokens = IssuedSessionTokens(
+                replacement_session,
+                access_token,
+                replacement_token,
+            )
+
+    if refresh_failed or issued_tokens is None:
+        raise RefreshTokenError("Refresh token is invalid or expired.")
+
+    return issued_tokens
+
+
 def _is_account_locked(user: User, now: datetime) -> bool:
     """Return whether the user's lockout time is still in the future."""
     if user.locked_until is None:
@@ -172,3 +235,22 @@ def _record_failed_login(user: User, now: datetime) -> None:
     if user.failed_login_attempts >= maximum_attempts:
         lockout_minutes = current_app.config["LOGIN_LOCKOUT_MINUTES"]
         user.locked_until = now + timedelta(minutes=lockout_minutes)
+
+
+def _is_expired(expires_at: datetime, now: datetime) -> bool:
+    """Compare expiration safely when a test database returns naive time."""
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return expires_at <= now
+
+
+def _revoke_token_family(family_id: UUID, revoked_at: datetime) -> None:
+    """Revoke every still-active refresh session in a rotation family."""
+    db.session.execute(
+        update(AuthSession)
+        .where(
+            AuthSession.family_id == family_id,
+            AuthSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=revoked_at)
+    )

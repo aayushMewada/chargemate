@@ -145,3 +145,54 @@ def test_login_endpoint_locks_account_after_five_failures(
     assert correct_password_while_locked.get_json()["error"]["code"] == (
         "invalid_credentials"
     )
+
+
+def test_refresh_endpoint_rotates_both_tokens(client: FlaskClient) -> None:
+    client.post("/auth/register", json=registration_payload())
+    login_response = client.post("/auth/login", json=login_payload())
+    original_cookie = client.get_cookie("refresh_token", path="/auth")
+
+    refresh_response = client.post("/auth/refresh")
+    replacement_cookie = client.get_cookie("refresh_token", path="/auth")
+
+    assert original_cookie is not None
+    assert replacement_cookie is not None
+    assert refresh_response.status_code == 200
+    assert refresh_response.get_json()["access_token"] != (
+        login_response.get_json()["access_token"]
+    )
+    assert replacement_cookie.value != original_cookie.value
+    assert refresh_response.get_json()["user"]["email"] == (
+        "driver@example.com"
+    )
+
+
+def test_refresh_endpoint_rejects_missing_cookie(client: FlaskClient) -> None:
+    response = client.post("/auth/refresh")
+
+    assert response.status_code == 401
+    assert response.get_json()["error"]["code"] == "invalid_refresh_token"
+
+
+def test_refresh_endpoint_detects_rotated_token_reuse(
+    client: FlaskClient,
+) -> None:
+    client.post("/auth/register", json=registration_payload())
+    client.post("/auth/login", json=login_payload())
+    original_cookie = client.get_cookie("refresh_token", path="/auth")
+    assert original_cookie is not None
+
+    successful_refresh = client.post("/auth/refresh")
+    client.set_cookie(
+        "refresh_token",
+        original_cookie.value,
+        path="/auth",
+    )
+    reused_refresh = client.post("/auth/refresh")
+
+    assert successful_refresh.status_code == 200
+    assert reused_refresh.status_code == 401
+    assert reused_refresh.get_json()["error"]["code"] == (
+        "invalid_refresh_token"
+    )
+    assert client.get_cookie("refresh_token", path="/auth") is None

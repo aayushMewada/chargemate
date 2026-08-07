@@ -6,10 +6,13 @@ from pydantic import ValidationError
 from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
 from chargemate.auth.service import (
     AuthenticationError,
+    IssuedSessionTokens,
+    RefreshTokenError,
     RegistrationConflictError,
     authenticate_user,
     create_auth_session,
     register_user,
+    rotate_auth_session,
 )
 from chargemate.auth.tokens import IssuedRefreshToken
 from chargemate.models.user import User
@@ -78,6 +81,42 @@ def login() -> Response | tuple[dict[str, Any], int]:
         return _error_response("invalid_credentials", str(error), 401)
 
     issued = create_auth_session(user)
+    return _token_response(user, issued)
+
+
+@auth_blueprint.post("/refresh")
+def refresh() -> Response | tuple[dict[str, Any], int]:
+    """Rotate the refresh cookie and issue a new access token."""
+    raw_refresh_token = request.cookies.get(
+        current_app.config["REFRESH_COOKIE_NAME"]
+    )
+    if not raw_refresh_token:
+        return _error_response(
+            "invalid_refresh_token",
+            "Refresh token is invalid or expired.",
+            401,
+        )
+
+    try:
+        issued = rotate_auth_session(raw_refresh_token)
+    except RefreshTokenError as error:
+        response = jsonify(
+            {
+                "error": {
+                    "code": "invalid_refresh_token",
+                    "message": str(error),
+                }
+            }
+        )
+        response.status_code = 401
+        _clear_refresh_cookie(response)
+        return response
+
+    return _token_response(issued.session.user, issued)
+
+
+def _token_response(user: User, issued: IssuedSessionTokens) -> Response:
+    """Return an access token and rotate the protected refresh cookie."""
     response = jsonify(
         {
             "access_token": issued.access_token.value,
@@ -149,4 +188,15 @@ def _set_refresh_cookie(
         secure=current_app.config["REFRESH_COOKIE_SECURE"],
         samesite=current_app.config["REFRESH_COOKIE_SAMESITE"],
         path=current_app.config["REFRESH_COOKIE_PATH"],
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    """Tell the browser to remove its current refresh-token cookie."""
+    response.delete_cookie(
+        key=current_app.config["REFRESH_COOKIE_NAME"],
+        path=current_app.config["REFRESH_COOKIE_PATH"],
+        httponly=current_app.config["REFRESH_COOKIE_HTTPONLY"],
+        secure=current_app.config["REFRESH_COOKIE_SECURE"],
+        samesite=current_app.config["REFRESH_COOKIE_SAMESITE"],
     )
