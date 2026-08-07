@@ -228,8 +228,13 @@ def test_public_station_detail_hides_draft_station(client, app):
 def test_public_list_rejects_invalid_or_unknown_query_parameters(client):
     invalid_page = client.get("/stations?page=0")
     unknown_filter = client.get("/stations?secret_status=active")
+    incomplete_location = client.get(
+        "/stations?latitude=22.75&longitude=75.89"
+    )
 
     assert invalid_page.status_code == 422
     assert invalid_page.get_json()["error"]["code"] == "validation_error"
     assert unknown_filter.status_code == 422
     assert unknown_filter.get_json()["error"]["code"] == "validation_error"
+    assert incomplete_location.status_code == 422
+    assert incomplete_location.get_json()["error"]["code"] == "validation_error"

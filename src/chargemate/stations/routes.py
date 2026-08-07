@@ -31,7 +31,11 @@ def list_charging_stations():
     station_page = find_public_stations(query)
     return {
         "stations": [
-            _serialize_station(station) for station in station_page.items
+            _serialize_station(
+                result.station,
+                distance_km=result.distance_km,
+            )
+            for result in station_page.items
         ],
         "pagination": {
             "page": station_page.page,
@@ -82,8 +86,12 @@ def create_charging_station():
     return {"station": _serialize_station(station)}, 201
 
 
-def _serialize_station(station: ChargingStation) -> dict:
-    return {
+def _serialize_station(
+    station: ChargingStation,
+    *,
+    distance_km: float | None = None,
+) -> dict:
+    serialized = {
         "id": str(station.id),
         "owner_id": str(station.owner_id),
         "name": station.name,
@@ -106,6 +114,9 @@ def _serialize_station(station: ChargingStation) -> dict:
         ],
         "created_at": station.created_at.isoformat(),
     }
+    if distance_km is not None:
+        serialized["distance_km"] = round(distance_km, 2)
+    return serialized
 
 
 def _serialize_charge_point(charge_point: ChargePoint) -> dict:

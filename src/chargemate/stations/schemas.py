@@ -71,5 +71,41 @@ class StationSearchQuery(BaseModel):
         max_digits=7,
         decimal_places=2,
     )
+    latitude: Decimal | None = Field(
+        default=None,
+        ge=-90,
+        le=90,
+        max_digits=9,
+        decimal_places=6,
+    )
+    longitude: Decimal | None = Field(
+        default=None,
+        ge=-180,
+        le=180,
+        max_digits=9,
+        decimal_places=6,
+    )
+    radius_km: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=200,
+        max_digits=6,
+        decimal_places=2,
+    )
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=20, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def spatial_filters_are_complete(self) -> "StationSearchQuery":
+        spatial_values = (self.latitude, self.longitude, self.radius_km)
+        if any(value is not None for value in spatial_values) and not all(
+            value is not None for value in spatial_values
+        ):
+            raise ValueError(
+                "latitude, longitude, and radius_km must be provided together"
+            )
+        return self
+
+    @property
+    def has_spatial_filter(self) -> bool:
+        return self.latitude is not None
