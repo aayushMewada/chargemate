@@ -56,3 +56,20 @@ class StationCreateRequest(BaseModel):
         if len(codes) != len(set(codes)):
             raise ValueError("charge point codes must be unique within a station")
         return self
+
+
+class StationSearchQuery(BaseModel):
+    """Validated filters and pagination for public station discovery."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    city: str | None = Field(default=None, min_length=2, max_length=100)
+    connector_type: ConnectorType | None = None
+    min_power_kw: Decimal | None = Field(
+        default=None,
+        gt=0,
+        max_digits=7,
+        decimal_places=2,
+    )
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=20, ge=1, le=100)

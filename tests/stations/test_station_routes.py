@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 
 from chargemate.extensions import db
 from chargemate.models.charge_point import ChargePoint
-from chargemate.models.station import ChargingStation
+from chargemate.models.station import ChargingStation, StationStatus
 from chargemate.models.user import User, UserRole
 
 
@@ -76,6 +76,23 @@ def _station_payload() -> dict:
     }
 
 
+def _create_station(client, access_token: str, payload: dict | None = None) -> dict:
+    response = client.post(
+        "/stations",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json=payload or _station_payload(),
+    )
+    assert response.status_code == 201
+    return response.get_json()["station"]
+
+
+def _activate_station(app, station_id: str) -> None:
+    with app.app_context():
+        station = db.session.get(ChargingStation, UUID(station_id))
+        station.status = StationStatus.ACTIVE
+        db.session.commit()
+
+
 def test_station_admin_creates_station_and_charge_points(client, app):
     user = _register_user(client, "station_admin")
     _promote_user(app, user["id"], UserRole.STATION_ADMIN)
@@ -145,3 +162,74 @@ def test_duplicate_charge_point_codes_are_rejected(client, app):
         )
 
     assert station_count == 0
+
+
+def test_public_list_returns_only_active_stations(client, app):
+    user = _register_user(client, "public_list_admin")
+    _promote_user(app, user["id"], UserRole.STATION_ADMIN)
+    access_token = _login(client, user["email"])
+    active_station = _create_station(client, access_token)
+
+    draft_payload = _station_payload()
+    draft_payload["name"] = "ChargeMate Draft Station"
+    _create_station(client, access_token, draft_payload)
+    _activate_station(app, active_station["id"])
+
+    response = client.get("/stations?city=indore&page=1&per_page=10")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert [station["id"] for station in body["stations"]] == [
+        active_station["id"]
+    ]
+    assert body["pagination"] == {
+        "page": 1,
+        "per_page": 10,
+        "total": 1,
+        "pages": 1,
+    }
+
+
+def test_public_list_filters_on_the_same_available_charge_point(client, app):
+    user = _register_user(client, "filter_station_admin")
+    _promote_user(app, user["id"], UserRole.STATION_ADMIN)
+    access_token = _login(client, user["email"])
+    station = _create_station(client, access_token)
+    _activate_station(app, station["id"])
+
+    matching = client.get(
+        "/stations?connector_type=ccs_2&min_power_kw=50"
+    )
+    non_matching = client.get(
+        "/stations?connector_type=type_2&min_power_kw=50"
+    )
+
+    assert matching.status_code == 200
+    assert matching.get_json()["pagination"]["total"] == 1
+    assert non_matching.status_code == 200
+    assert non_matching.get_json()["pagination"]["total"] == 0
+
+
+def test_public_station_detail_hides_draft_station(client, app):
+    user = _register_user(client, "detail_station_admin")
+    _promote_user(app, user["id"], UserRole.STATION_ADMIN)
+    access_token = _login(client, user["email"])
+    station = _create_station(client, access_token)
+
+    hidden_response = client.get(f"/stations/{station['id']}")
+    _activate_station(app, station["id"])
+    visible_response = client.get(f"/stations/{station['id']}")
+
+    assert hidden_response.status_code == 404
+    assert visible_response.status_code == 200
+    assert visible_response.get_json()["station"]["id"] == station["id"]
+
+
+def test_public_list_rejects_invalid_or_unknown_query_parameters(client):
+    invalid_page = client.get("/stations?page=0")
+    unknown_filter = client.get("/stations?secret_status=active")
+
+    assert invalid_page.status_code == 422
+    assert invalid_page.get_json()["error"]["code"] == "validation_error"
+    assert unknown_filter.status_code == 422
+    assert unknown_filter.get_json()["error"]["code"] == "validation_error"

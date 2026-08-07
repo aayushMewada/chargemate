@@ -7,11 +7,58 @@ from chargemate.auth.decorators import roles_required
 from chargemate.models.charge_point import ChargePoint
 from chargemate.models.station import ChargingStation
 from chargemate.models.user import UserRole
-from chargemate.stations.schemas import StationCreateRequest
-from chargemate.stations.service import StationConflictError, create_station
+from chargemate.stations.schemas import StationCreateRequest, StationSearchQuery
+from chargemate.stations.service import (
+    StationConflictError,
+    create_station,
+    find_public_stations,
+    get_public_station,
+)
 
 
 stations_blueprint = Blueprint("stations", __name__, url_prefix="/stations")
+
+
+@stations_blueprint.get("")
+def list_charging_stations():
+    """Return a filtered, paginated list of active stations."""
+
+    try:
+        query = StationSearchQuery.model_validate(request.args)
+    except ValidationError as error:
+        return _validation_error_response(error)
+
+    station_page = find_public_stations(query)
+    return {
+        "stations": [
+            _serialize_station(station) for station in station_page.items
+        ],
+        "pagination": {
+            "page": station_page.page,
+            "per_page": station_page.per_page,
+            "total": station_page.total,
+            "pages": (
+                station_page.total + station_page.per_page - 1
+            )
+            // station_page.per_page,
+        },
+    }, 200
+
+
+@stations_blueprint.get("/<uuid:station_id>")
+def get_charging_station(station_id):
+    """Return one active station or a generic not-found response."""
+
+    station = get_public_station(station_id)
+    if station is None:
+        return {
+            "error": {
+                "code": "station_not_found",
+                "message": "The charging station was not found.",
+            }
+        }, 404
+
+    return {"station": _serialize_station(station)}, 200
 
 
 @stations_blueprint.post("")
@@ -23,23 +70,7 @@ def create_charging_station():
         payload = StationCreateRequest.model_validate(request.get_json(silent=True))
         station = create_station(g.current_user, payload)
     except ValidationError as error:
-        return {
-            "error": {
-                "code": "validation_error",
-                "message": "The station data is invalid.",
-                "details": [
-                    {
-                        "location": list(detail["loc"]),
-                        "message": detail["msg"],
-                        "type": detail["type"],
-                    }
-                    for detail in error.errors(
-                        include_url=False,
-                        include_input=False,
-                    )
-                ],
-            }
-        }, 422
+        return _validation_error_response(error)
     except StationConflictError:
         return {
             "error": {
@@ -91,3 +122,23 @@ def _serialize_charge_point(charge_point: ChargePoint) -> dict:
 
 def _decimal_to_float(value: Decimal) -> float:
     return float(value)
+
+
+def _validation_error_response(error: ValidationError) -> tuple[dict, int]:
+    return {
+        "error": {
+            "code": "validation_error",
+            "message": "The request data is invalid.",
+            "details": [
+                {
+                    "location": list(detail["loc"]),
+                    "message": detail["msg"],
+                    "type": detail["type"],
+                }
+                for detail in error.errors(
+                    include_url=False,
+                    include_input=False,
+                )
+            ],
+        }
+    }, 422
