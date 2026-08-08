@@ -171,6 +171,7 @@ def _serialize_charge_point(charge_point: ChargePoint) -> dict:
         "connector_type": charge_point.connector_type.value,
         "power_type": charge_point.power_type.value,
         "max_power_kw": _decimal_to_float(charge_point.max_power_kw),
+        "booking_fee": _decimal_to_float(charge_point.booking_fee),
         "is_bookable": charge_point.is_bookable,
         "status": charge_point.status.value,
     }

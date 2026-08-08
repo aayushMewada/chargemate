@@ -64,6 +64,7 @@ def _create_charge_point(
             connector_type=ConnectorType.CCS_2,
             power_type=PowerType.DC,
             max_power_kw=Decimal("60.00"),
+            booking_fee=Decimal("75.00"),
             status=status,
             is_bookable=is_bookable,
         )
@@ -108,6 +109,8 @@ def test_user_creates_temporary_booking_hold(client, app):
     assert booking["user_id"] == user["id"]
     assert booking["charge_point_id"] == charge_point_id
     assert booking["status"] == "held"
+    assert booking["total_amount"] == 75.0
+    assert booking["currency"] == "INR"
     assert booking["version"] == 1
     assert booking["hold_expires_at"] is not None
 

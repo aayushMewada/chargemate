@@ -56,6 +56,7 @@ class ChargePoint(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
     __table_args__ = (
         UniqueConstraint("station_id", "code", name="station_code"),
         CheckConstraint("max_power_kw > 0", name="positive_max_power_kw"),
+        CheckConstraint("booking_fee >= 0", name="non_negative_booking_fee"),
     )
 
     station_id: Mapped[UUID] = mapped_column(
@@ -81,6 +82,12 @@ class ChargePoint(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
         nullable=False,
     )
     max_power_kw: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False)
+    booking_fee: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        nullable=False,
+        default=Decimal("50.00"),
+        server_default="50.00",
+    )
     is_bookable: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

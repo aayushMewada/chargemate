@@ -87,6 +87,8 @@ def create_booking_hold(user: User, payload: BookingHoldRequest) -> Booking:
             ends_at=payload.ends_at,
             hold_expires_at=now + timedelta(minutes=hold_minutes),
             status=BookingStatus.HELD,
+            total_amount=charge_point.booking_fee,
+            currency="INR",
         )
         db.session.add(booking)
         db.session.commit()

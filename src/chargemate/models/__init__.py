@@ -6,6 +6,7 @@ from chargemate.models.charge_point import (
     ConnectorType,
     PowerType,
 )
+from chargemate.models.payment import Payment, PaymentProvider, PaymentStatus
 from chargemate.models.station import ChargingStation, StationStatus
 from chargemate.models.user import User, UserRole
 
@@ -19,6 +20,9 @@ __all__ = [
     "ChargingStation",
     "ConnectorType",
     "PowerType",
+    "Payment",
+    "PaymentProvider",
+    "PaymentStatus",
     "StationStatus",
     "User",
     "UserRole",

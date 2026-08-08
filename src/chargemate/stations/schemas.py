@@ -14,6 +14,12 @@ class ChargePointCreateRequest(BaseModel):
     connector_type: ConnectorType
     power_type: PowerType
     max_power_kw: Decimal = Field(gt=0, max_digits=7, decimal_places=2)
+    booking_fee: Decimal = Field(
+        default=Decimal("50.00"),
+        ge=0,
+        max_digits=10,
+        decimal_places=2,
+    )
     is_bookable: bool = True
 
     @field_validator("code")
