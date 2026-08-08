@@ -6,6 +6,10 @@ from chargemate.models.charge_point import (
     ConnectorType,
     PowerType,
 )
+from chargemate.models.charging_session import (
+    ChargingSession,
+    ChargingSessionStatus,
+)
 from chargemate.models.payment import Payment, PaymentProvider, PaymentStatus
 from chargemate.models.payment_webhook_event import (
     PaymentWebhookEvent,
@@ -22,6 +26,8 @@ __all__ = [
     "BookingStatus",
     "ChargePoint",
     "ChargePointStatus",
+    "ChargingSession",
+    "ChargingSessionStatus",
     "ChargingStation",
     "ConnectorType",
     "PowerType",
