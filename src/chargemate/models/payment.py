@@ -12,6 +12,7 @@ from chargemate.models.base import TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from chargemate.models.booking import Booking
+    from chargemate.models.refund import Refund
     from chargemate.models.user import User
 
 
@@ -92,3 +93,7 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
 
     booking: Mapped["Booking"] = relationship(back_populates="payments")
     user: Mapped["User"] = relationship(back_populates="payments")
+    refund: Mapped["Refund | None"] = relationship(
+        back_populates="payment",
+        uselist=False,
+    )

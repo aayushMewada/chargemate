@@ -7,16 +7,17 @@ from chargemate.bookings.schemas import (
     BookingListQuery,
     CancelBookingRequest,
 )
+from chargemate.bookings.cancellation import cancel_booking_with_refund
 from chargemate.bookings.service import (
     BookingStateConflictError,
     BookingTimeError,
     BookingUnavailableError,
-    cancel_user_booking,
     create_booking_hold,
     find_user_bookings,
     get_user_booking,
 )
 from chargemate.models.booking import Booking
+from chargemate.models.refund import Refund, RefundStatus
 
 
 bookings_blueprint = Blueprint("bookings", __name__, url_prefix="/bookings")
@@ -61,11 +62,11 @@ def get_my_booking(booking_id):
 @bookings_blueprint.post("/<uuid:booking_id>/cancel")
 @access_token_required
 def cancel_my_booking(booking_id):
-    """Cancel a user-owned booking with optimistic concurrency control."""
+    """Cancel a booking and initiate a full refund when money was captured."""
 
     try:
         payload = CancelBookingRequest.model_validate(request.get_json(silent=True))
-        booking = cancel_user_booking(
+        outcome = cancel_booking_with_refund(
             g.current_user.id,
             booking_id,
             payload.version,
@@ -80,7 +81,22 @@ def cancel_my_booking(booking_id):
             }
         }, 409
 
-    return {"booking": _serialize_booking(booking)}, 200
+    response = {"booking": _serialize_booking(outcome.booking)}
+    if outcome.refund is None:
+        return response, 200
+
+    response["refund"] = _serialize_refund(outcome.refund)
+    if outcome.provider_error or outcome.refund.status == RefundStatus.FAILED:
+        response["error"] = {
+            "code": "refund_provider_unavailable",
+            "message": (
+                "The booking was cancelled, but the refund requires attention."
+            ),
+        }
+        return response, 502
+    if outcome.refund.status in (RefundStatus.REQUESTED, RefundStatus.PENDING):
+        return response, 202
+    return response, 200
 
 
 @bookings_blueprint.post("")
@@ -128,6 +144,22 @@ def _serialize_booking(booking: Booking) -> dict:
         "currency": booking.currency,
         "version": booking.version,
         "created_at": booking.created_at.isoformat(),
+    }
+
+
+def _serialize_refund(refund: Refund) -> dict:
+    return {
+        "id": str(refund.id),
+        "payment_id": str(refund.payment_id),
+        "status": refund.status.value,
+        "amount": float(refund.amount),
+        "currency": refund.currency,
+        "provider_refund_id": refund.provider_refund_id,
+        "processed_at": (
+            refund.processed_at.isoformat()
+            if refund.processed_at is not None
+            else None
+        ),
     }
 
 

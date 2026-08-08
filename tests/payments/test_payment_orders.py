@@ -16,8 +16,14 @@ from chargemate.models.charge_point import (
 )
 from chargemate.models.payment import Payment, PaymentStatus
 from chargemate.models.payment_webhook_event import PaymentWebhookEvent
+from chargemate.models.refund import Refund, RefundStatus
 from chargemate.models.station import ChargingStation, StationStatus
-from chargemate.payments.razorpay import RazorpayOrder, RazorpayOrderError
+from chargemate.payments.razorpay import (
+    RazorpayOrder,
+    RazorpayOrderError,
+    RazorpayRefund,
+    RazorpayRefundError,
+)
 
 
 PASSWORD = "Payment-Test-Password-2026"
@@ -159,6 +165,53 @@ def _post_webhook(client, raw_body: bytes, event_id: str, secret: str):
             "X-Razorpay-Signature": _hmac_signature(raw_body, secret),
         },
     )
+
+
+def _capture_mocked_payment(client, app, monkeypatch, suffix: str):
+    booking, access_token, order = _create_mocked_payment_order(
+        client,
+        app,
+        monkeypatch,
+        suffix,
+    )
+    webhook_secret = "webhook-test-secret"
+    monkeypatch.setitem(app.config, "RAZORPAY_WEBHOOK_SECRET", webhook_secret)
+    raw_body = _webhook_payload(
+        "payment.captured",
+        order["payment"]["provider_order_id"],
+        f"pay_{suffix}",
+    )
+    response = _post_webhook(
+        client,
+        raw_body,
+        f"event_capture_{suffix}",
+        webhook_secret,
+    )
+    assert response.status_code == 200
+    return booking, access_token, order, webhook_secret
+
+
+def _refund_webhook_payload(
+    event_type: str,
+    refund_id: str,
+    payment_id: str,
+) -> bytes:
+    return json.dumps(
+        {
+            "event": event_type,
+            "payload": {
+                "refund": {
+                    "entity": {
+                        "id": refund_id,
+                        "payment_id": payment_id,
+                        "amount": 7500,
+                        "currency": "INR",
+                    }
+                }
+            },
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
 
 
 def test_payment_order_is_created_and_idempotently_replayed(
@@ -526,3 +579,163 @@ def test_webhook_amount_mismatch_does_not_confirm_booking(
         assert payment.last_error_code == "provider_amount_mismatch"
         assert stored_booking.status == BookingStatus.PAYMENT_PENDING
         assert stored_booking.version == 2
+
+
+def test_cancelling_confirmed_booking_processes_full_refund(
+    client,
+    app,
+    monkeypatch,
+):
+    booking, access_token, _, _ = _capture_mocked_payment(
+        client,
+        app,
+        monkeypatch,
+        "processed_refund_user",
+    )
+    provider_calls = []
+
+    def fake_create_refund(**kwargs):
+        provider_calls.append(kwargs)
+        return RazorpayRefund(
+            id="rfnd_processed_123",
+            payment_id=kwargs["payment_id"],
+            amount_subunits=kwargs["amount_subunits"],
+            currency=kwargs["currency"],
+            status="processed",
+        )
+
+    monkeypatch.setattr(
+        "chargemate.bookings.cancellation.create_razorpay_refund",
+        fake_create_refund,
+    )
+    response = client.post(
+        f"/bookings/{booking['id']}/cancel",
+        headers=_headers(access_token),
+        json={"version": 3},
+    )
+    repeated = client.post(
+        f"/bookings/{booking['id']}/cancel",
+        headers=_headers(access_token),
+        json={"version": 3},
+    )
+
+    assert response.status_code == 200
+    assert repeated.status_code == 200
+    assert len(provider_calls) == 1
+    assert response.get_json()["booking"]["status"] == "cancelled"
+    assert response.get_json()["refund"]["status"] == "processed"
+    with app.app_context():
+        payment = db.session.scalar(select(Payment))
+        refund = db.session.scalar(select(Refund))
+        assert payment.status == PaymentStatus.REFUNDED
+        assert refund.status == RefundStatus.PROCESSED
+
+
+def test_pending_refund_returns_accepted(client, app, monkeypatch):
+    booking, access_token, _, _ = _capture_mocked_payment(
+        client,
+        app,
+        monkeypatch,
+        "pending_refund_user",
+    )
+
+    def fake_create_refund(**kwargs):
+        return RazorpayRefund(
+            id="rfnd_pending_123",
+            payment_id=kwargs["payment_id"],
+            amount_subunits=kwargs["amount_subunits"],
+            currency=kwargs["currency"],
+            status="pending",
+        )
+
+    monkeypatch.setattr(
+        "chargemate.bookings.cancellation.create_razorpay_refund",
+        fake_create_refund,
+    )
+    response = client.post(
+        f"/bookings/{booking['id']}/cancel",
+        headers=_headers(access_token),
+        json={"version": 3},
+    )
+
+    assert response.status_code == 202
+    assert response.get_json()["refund"]["status"] == "pending"
+
+
+def test_refund_provider_failure_is_durable(client, app, monkeypatch):
+    booking, access_token, _, _ = _capture_mocked_payment(
+        client,
+        app,
+        monkeypatch,
+        "failed_refund_user",
+    )
+
+    def failing_refund(**_kwargs):
+        raise RazorpayRefundError
+
+    monkeypatch.setattr(
+        "chargemate.bookings.cancellation.create_razorpay_refund",
+        failing_refund,
+    )
+    response = client.post(
+        f"/bookings/{booking['id']}/cancel",
+        headers=_headers(access_token),
+        json={"version": 3},
+    )
+
+    assert response.status_code == 502
+    assert response.get_json()["booking"]["status"] == "cancelled"
+    assert response.get_json()["refund"]["status"] == "failed"
+    with app.app_context():
+        refund = db.session.scalar(select(Refund))
+        assert refund.last_error_code == "provider_refund_failed"
+
+
+def test_refund_webhook_reconciles_lost_provider_response(
+    client,
+    app,
+    monkeypatch,
+):
+    booking, access_token, _, webhook_secret = _capture_mocked_payment(
+        client,
+        app,
+        monkeypatch,
+        "refund_reconcile_user",
+    )
+
+    def failing_refund(**_kwargs):
+        raise RazorpayRefundError
+
+    monkeypatch.setattr(
+        "chargemate.bookings.cancellation.create_razorpay_refund",
+        failing_refund,
+    )
+    cancellation = client.post(
+        f"/bookings/{booking['id']}/cancel",
+        headers=_headers(access_token),
+        json={"version": 3},
+    )
+    assert cancellation.status_code == 502
+
+    with app.app_context():
+        payment_id = db.session.scalar(select(Payment.provider_payment_id))
+    raw_body = _refund_webhook_payload(
+        "refund.processed",
+        "rfnd_reconciled_123",
+        payment_id,
+    )
+    webhook = _post_webhook(
+        client,
+        raw_body,
+        "event_refund_reconciled",
+        webhook_secret,
+    )
+
+    assert webhook.status_code == 200
+    assert webhook.get_json()["status"] == "processed"
+    with app.app_context():
+        payment = db.session.scalar(select(Payment))
+        refund = db.session.scalar(select(Refund))
+        assert payment.status == PaymentStatus.REFUNDED
+        assert refund.status == RefundStatus.PROCESSED
+        assert refund.provider_refund_id == "rfnd_reconciled_123"

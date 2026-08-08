@@ -11,6 +11,7 @@ from chargemate.models.payment_webhook_event import (
     PaymentWebhookEvent,
     WebhookEventStatus,
 )
+from chargemate.models.refund import Refund, RefundStatus
 from chargemate.models.station import ChargingStation, StationStatus
 from chargemate.models.user import User, UserRole
 
@@ -28,6 +29,8 @@ __all__ = [
     "PaymentProvider",
     "PaymentStatus",
     "PaymentWebhookEvent",
+    "Refund",
+    "RefundStatus",
     "StationStatus",
     "User",
     "UserRole",

@@ -13,6 +13,7 @@ from chargemate.models.payment_webhook_event import (
     PaymentWebhookEvent,
     WebhookEventStatus,
 )
+from chargemate.models.refund import Refund, RefundStatus
 from chargemate.payments.service import timestamp_is_after
 from chargemate.payments.signatures import sha256_hex, verify_webhook_signature
 
@@ -22,6 +23,11 @@ SUPPORTED_PAYMENT_EVENTS = {
     "payment.captured",
     "payment.failed",
 }
+SUPPORTED_REFUND_EVENTS = {
+    "refund.processed",
+    "refund.failed",
+}
+SUPPORTED_EVENTS = SUPPORTED_PAYMENT_EVENTS | SUPPORTED_REFUND_EVENTS
 
 
 class WebhookAuthenticationError(Exception):
@@ -89,8 +95,11 @@ def process_razorpay_webhook(
         raise WebhookAuthenticationError
 
     try:
-        if payload["event"] not in SUPPORTED_PAYMENT_EVENTS:
+        if payload["event"] not in SUPPORTED_EVENTS:
             event.status = WebhookEventStatus.IGNORED
+        elif payload["event"] in SUPPORTED_REFUND_EVENTS:
+            entity = _refund_entity(payload)
+            _apply_refund_event(payload["event"], entity, event)
         else:
             entity = _payment_entity(payload)
             _apply_payment_event(payload["event"], entity, event)
@@ -120,13 +129,21 @@ def _existing_event(provider_event_id: str, payload_hash: str) -> bool:
 
 
 def _payment_entity(payload: dict[str, Any]) -> dict[str, Any]:
-    payment_payload = payload.get("payload")
-    if not isinstance(payment_payload, dict):
+    return _nested_entity(payload, "payment")
+
+
+def _refund_entity(payload: dict[str, Any]) -> dict[str, Any]:
+    return _nested_entity(payload, "refund")
+
+
+def _nested_entity(payload: dict[str, Any], entity_name: str) -> dict[str, Any]:
+    provider_payload = payload.get("payload")
+    if not isinstance(provider_payload, dict):
         raise WebhookPayloadError
-    payment_wrapper = payment_payload.get("payment")
-    if not isinstance(payment_wrapper, dict):
+    wrapper = provider_payload.get(entity_name)
+    if not isinstance(wrapper, dict):
         raise WebhookPayloadError
-    entity = payment_wrapper.get("entity")
+    entity = wrapper.get("entity")
     if not isinstance(entity, dict):
         raise WebhookPayloadError
     return entity
@@ -211,6 +228,59 @@ def _apply_failed_payment(payment: Payment) -> None:
             else BookingStatus.EXPIRED
         )
         booking.version += 1
+
+
+def _apply_refund_event(
+    event_type: str,
+    entity: dict[str, Any],
+    event: PaymentWebhookEvent,
+) -> None:
+    refund_id = entity.get("id")
+    provider_payment_id = entity.get("payment_id")
+    if not isinstance(refund_id, str) or not isinstance(provider_payment_id, str):
+        raise WebhookPayloadError
+
+    payment = db.session.scalar(
+        select(Payment)
+        .where(Payment.provider_payment_id == provider_payment_id)
+        .with_for_update()
+    )
+    if payment is None:
+        event.status = WebhookEventStatus.IGNORED
+        return
+
+    refund = db.session.scalar(
+        select(Refund)
+        .where(Refund.payment_id == payment.id)
+        .with_for_update()
+    )
+    if refund is None:
+        event.status = WebhookEventStatus.IGNORED
+        return
+    if (
+        entity.get("amount") != refund.amount_subunits
+        or entity.get("currency") != refund.currency
+    ):
+        refund.last_error_code = "provider_refund_amount_mismatch"
+        event.status = WebhookEventStatus.IGNORED
+        return
+    if (
+        refund.provider_refund_id is not None
+        and refund.provider_refund_id != refund_id
+    ):
+        refund.last_error_code = "provider_refund_id_mismatch"
+        event.status = WebhookEventStatus.IGNORED
+        return
+
+    refund.provider_refund_id = refund_id
+    if event_type == "refund.processed":
+        refund.status = RefundStatus.PROCESSED
+        refund.processed_at = datetime.now(UTC)
+        payment.status = PaymentStatus.REFUNDED
+    elif refund.status != RefundStatus.PROCESSED:
+        refund.status = RefundStatus.FAILED
+        refund.last_error_code = "provider_refund_failed"
+    event.status = WebhookEventStatus.PROCESSED
 
 
 def _provider_amount_matches(payment: Payment, entity: dict[str, Any]) -> bool:
