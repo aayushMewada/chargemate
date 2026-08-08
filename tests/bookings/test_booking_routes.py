@@ -123,6 +123,9 @@ def test_user_creates_temporary_booking_hold(client, app):
     booking = response.get_json()["booking"]
     assert booking["user_id"] == user["id"]
     assert booking["charge_point_id"] == charge_point_id
+    assert booking["charge_point"]["code"] == "CP-01"
+    assert booking["charge_point"]["station"]["name"] == "Booking Test Station"
+    assert booking["payments"] == []
     assert booking["status"] == "held"
     assert booking["total_amount"] == 75.0
     assert booking["currency"] == "INR"

@@ -5,12 +5,13 @@ from uuid import UUID
 from flask import current_app
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import contains_eager
+from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
 from chargemate.bookings.schemas import BookingHoldRequest, BookingListQuery
 from chargemate.extensions import db
 from chargemate.models.booking import Booking, BookingStatus
 from chargemate.models.charge_point import ChargePoint, ChargePointStatus
+from chargemate.models.payment import Payment
 from chargemate.models.station import StationStatus
 from chargemate.models.user import User
 
@@ -134,6 +135,10 @@ def find_user_bookings(user_id: UUID, query: BookingListQuery) -> BookingPage:
     )
     bookings = db.session.scalars(
         select(Booking)
+        .options(
+            joinedload(Booking.charge_point).joinedload(ChargePoint.station),
+            selectinload(Booking.payments).joinedload(Payment.refund),
+        )
         .where(*filters)
         .order_by(Booking.starts_at.desc(), Booking.id)
         .offset((query.page - 1) * query.per_page)
@@ -153,7 +158,12 @@ def get_user_booking(user_id: UUID, booking_id: UUID) -> Booking | None:
     _expire_user_stale_holds(user_id, datetime.now(UTC))
     db.session.commit()
     return db.session.scalar(
-        select(Booking).where(
+        select(Booking)
+        .options(
+            joinedload(Booking.charge_point).joinedload(ChargePoint.station),
+            selectinload(Booking.payments).joinedload(Payment.refund),
+        )
+        .where(
             Booking.id == booking_id,
             Booking.user_id == user_id,
         )

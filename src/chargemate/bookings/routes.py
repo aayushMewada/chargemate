@@ -132,6 +132,19 @@ def _serialize_booking(booking: Booking) -> dict:
         "id": str(booking.id),
         "user_id": str(booking.user_id),
         "charge_point_id": str(booking.charge_point_id),
+        "charge_point": {
+            "id": str(booking.charge_point.id),
+            "code": booking.charge_point.code,
+            "connector_type": booking.charge_point.connector_type.value,
+            "power_type": booking.charge_point.power_type.value,
+            "max_power_kw": float(booking.charge_point.max_power_kw),
+            "station": {
+                "id": str(booking.charge_point.station.id),
+                "name": booking.charge_point.station.name,
+                "city": booking.charge_point.station.city,
+                "state": booking.charge_point.station.state,
+            },
+        },
         "starts_at": booking.starts_at.isoformat(),
         "ends_at": booking.ends_at.isoformat(),
         "hold_expires_at": booking.hold_expires_at.isoformat(),
@@ -143,6 +156,26 @@ def _serialize_booking(booking: Booking) -> dict:
         ),
         "currency": booking.currency,
         "version": booking.version,
+        "payments": [
+            {
+                "id": str(payment.id),
+                "status": payment.status.value,
+                "amount": float(payment.amount),
+                "currency": payment.currency,
+                "provider_payment_id": payment.provider_payment_id,
+                "created_at": payment.created_at.isoformat(),
+                "refund": (
+                    _serialize_refund(payment.refund)
+                    if payment.refund is not None
+                    else None
+                ),
+            }
+            for payment in sorted(
+                booking.payments,
+                key=lambda item: item.created_at,
+                reverse=True,
+            )
+        ],
         "created_at": booking.created_at.isoformat(),
     }
 
