@@ -1,0 +1,701 @@
+openapi: 3.1.0
+info:
+  title: ChargeMate API
+  version: 0.1.0
+  description: |
+    Backend API for EV station discovery, concurrency-safe booking,
+    Razorpay payments, and metered charging sessions.
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development
+tags:
+  - name: Health
+  - name: Authentication
+  - name: Stations
+  - name: Bookings
+  - name: Payments
+  - name: Charging sessions
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Check whether the API process is alive
+      responses:
+        "200":
+          description: API process is healthy
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Kubernetes-style liveness check
+      responses:
+        "200":
+          description: API process is healthy
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Check PostgreSQL and Redis connectivity
+      responses:
+        "200":
+          description: Required dependencies are healthy
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User created
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Log in using an email address or username
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Access token returned and refresh cookie set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Rotate the refresh session and issue a new access token
+      description: Requires the HTTP-only refresh_token cookie.
+      responses:
+        "200":
+          description: Tokens rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Return the authenticated user's safe profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Revoke the current session
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Session revoked and refresh cookie removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout-all:
+    post:
+      tags: [Authentication]
+      summary: Revoke all refresh sessions for the current user
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: All sessions revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /stations:
+    get:
+      tags: [Stations]
+      summary: Search active, locally managed stations
+      parameters:
+        - $ref: "#/components/parameters/Latitude"
+        - $ref: "#/components/parameters/Longitude"
+        - $ref: "#/components/parameters/RadiusKm"
+        - name: city
+          in: query
+          schema: {type: string}
+        - name: connector_type
+          in: query
+          schema: {type: string}
+        - name: min_power_kw
+          in: query
+          schema: {type: number, exclusiveMinimum: 0}
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated station results
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      tags: [Stations]
+      summary: Create a managed station and its charge points
+      description: Requires station_admin or system_admin role.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StationCreateRequest"
+      responses:
+        "201":
+          description: Station created
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /stations/external:
+    get:
+      tags: [Stations]
+      summary: Search non-bookable Open Charge Map locations
+      parameters:
+        - $ref: "#/components/parameters/RequiredLatitude"
+        - $ref: "#/components/parameters/RequiredLongitude"
+        - name: radius_km
+          in: query
+          schema: {type: number, default: 25, exclusiveMinimum: 0, maximum: 100}
+        - name: max_results
+          in: query
+          schema: {type: integer, default: 50, minimum: 1, maximum: 100}
+      responses:
+        "200":
+          description: Normalized external stations
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /stations/mine:
+    get:
+      tags: [Stations]
+      summary: List stations owned by the current administrator
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated owned stations
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /stations/{station_id}:
+    parameters:
+      - $ref: "#/components/parameters/StationId"
+    get:
+      tags: [Stations]
+      summary: Get one active managed station
+      responses:
+        "200":
+          description: Station details
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Stations]
+      summary: Update an owned station using optimistic concurrency
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StationUpdateRequest"
+      responses:
+        "200":
+          description: Station updated
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /stations/{station_id}/charge-points/{charge_point_id}:
+    patch:
+      tags: [Stations]
+      summary: Update an owned charge point using optimistic concurrency
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StationId"
+        - name: charge_point_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChargePointUpdateRequest"
+      responses:
+        "200":
+          description: Charge point updated
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /bookings:
+    post:
+      tags: [Bookings]
+      summary: Create a short-lived booking hold
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingHoldRequest"
+      responses:
+        "201":
+          description: Booking hold created
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /bookings/me:
+    get:
+      tags: [Bookings]
+      summary: List the current user's bookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: "#/components/schemas/BookingStatus"}
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated booking history
+  /bookings/{booking_id}:
+    get:
+      tags: [Bookings]
+      summary: Get one booking owned by the current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BookingId"
+      responses:
+        "200":
+          description: Booking details
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /bookings/{booking_id}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel a booking and initiate any required refund
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/BookingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionRequest"
+      responses:
+        "200":
+          description: Booking cancelled
+        "202":
+          description: Booking cancelled and refund pending
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          description: Booking cancelled but refund requires reconciliation
+
+  /payments/orders:
+    post:
+      tags: [Payments]
+      summary: Idempotently create a Razorpay order for a held booking
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentOrderRequest"
+      responses:
+        "201":
+          description: Checkout order created or replayed
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          description: Payment provider unavailable
+  /payments/verify:
+    post:
+      tags: [Payments]
+      summary: Verify the signed Razorpay Checkout result
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentVerificationRequest"
+      responses:
+        "200":
+          description: Checkout signature verified
+        "400":
+          description: Signature verification failed
+  /payments/webhooks/razorpay:
+    post:
+      tags: [Payments]
+      summary: Receive a signed, idempotently processed Razorpay webhook
+      parameters:
+        - name: X-Razorpay-Signature
+          in: header
+          required: true
+          schema: {type: string}
+        - name: X-Razorpay-Event-Id
+          in: header
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        "200":
+          description: Webhook accepted or safely replayed
+        "400":
+          description: Invalid signature or payload
+
+  /charging-sessions:
+    post:
+      tags: [Charging sessions]
+      summary: Start metered charging for a confirmed booking
+      description: Requires an administrator who controls the charge point.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartSessionRequest"
+      responses:
+        "201":
+          description: Charging session started
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /charging-sessions/me:
+    get:
+      tags: [Charging sessions]
+      summary: List the current user's charging sessions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: {type: string, enum: [active, completed]}
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated charging history
+  /charging-sessions/{session_id}:
+    get:
+      tags: [Charging sessions]
+      summary: Get one session belonging to the current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Charging-session details
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /charging-sessions/{session_id}/complete:
+    post:
+      tags: [Charging sessions]
+      summary: Complete an active session using its final meter reading
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteSessionRequest"
+      responses:
+        "200":
+          description: Charging session completed
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: {type: integer, default: 1, minimum: 1}
+    PerPage:
+      name: per_page
+      in: query
+      schema: {type: integer, default: 20, minimum: 1, maximum: 100}
+    Latitude:
+      name: latitude
+      in: query
+      schema: {type: number, minimum: -90, maximum: 90}
+    Longitude:
+      name: longitude
+      in: query
+      schema: {type: number, minimum: -180, maximum: 180}
+    RequiredLatitude:
+      name: latitude
+      in: query
+      required: true
+      schema: {type: number, minimum: -90, maximum: 90}
+    RequiredLongitude:
+      name: longitude
+      in: query
+      required: true
+      schema: {type: number, minimum: -180, maximum: 180}
+    RadiusKm:
+      name: radius_km
+      in: query
+      schema: {type: number, exclusiveMinimum: 0, maximum: 200}
+    StationId:
+      name: station_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    BookingId:
+      name: booking_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+
+  responses:
+    Unauthorized:
+      description: Access or refresh credentials are missing, invalid, or expired
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorResponse"}
+    Forbidden:
+      description: Authenticated user lacks the required role or ownership
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorResponse"}
+    NotFound:
+      description: Resource was not found or is not visible to this user
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorResponse"}
+    Conflict:
+      description: Resource state, version, uniqueness, or availability conflict
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorResponse"}
+    ValidationError:
+      description: Request data failed validation
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorResponse"}
+    ServiceUnavailable:
+      description: A required internal or external dependency is unavailable
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorResponse"}
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            details:
+              type: array
+              items: {type: object, additionalProperties: true}
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, username, password, full_name]
+      properties:
+        email: {type: string, format: email}
+        username: {type: string, pattern: "^[a-z0-9_]+$", minLength: 3, maxLength: 50}
+        password: {type: string, format: password, minLength: 12, maxLength: 128}
+        full_name: {type: string, minLength: 2, maxLength: 100}
+        phone: {type: [string, "null"], pattern: "^\\+[1-9]\\d{7,14}$"}
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [identifier, password]
+      properties:
+        identifier: {type: string, minLength: 3, maxLength: 255}
+        password: {type: string, format: password, minLength: 1, maxLength: 128}
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token: {type: string}
+        token_type: {type: string, const: Bearer}
+        expires_in: {type: integer, example: 900}
+        user: {type: object, additionalProperties: true}
+    ChargePointCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [code, connector_type, power_type, max_power_kw]
+      properties:
+        code: {type: string, minLength: 1, maxLength: 50}
+        connector_type: {type: string}
+        power_type: {type: string}
+        max_power_kw: {type: number, exclusiveMinimum: 0}
+        booking_fee: {type: number, minimum: 0, default: 50}
+        is_bookable: {type: boolean, default: true}
+    StationCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, address_line_1, city, state, postal_code, latitude, longitude, charge_points]
+      properties:
+        name: {type: string, minLength: 2, maxLength: 120}
+        description: {type: [string, "null"], maxLength: 2000}
+        address_line_1: {type: string, minLength: 3, maxLength: 255}
+        address_line_2: {type: [string, "null"], maxLength: 255}
+        city: {type: string, minLength: 2, maxLength: 100}
+        state: {type: string, minLength: 2, maxLength: 100}
+        postal_code: {type: string, minLength: 3, maxLength: 20}
+        country_code: {type: string, default: IN, minLength: 2, maxLength: 2}
+        latitude: {type: number, minimum: -90, maximum: 90}
+        longitude: {type: number, minimum: -180, maximum: 180}
+        timezone: {type: string, default: Asia/Kolkata}
+        phone: {type: [string, "null"]}
+        is_24_hours: {type: boolean, default: false}
+        charge_points:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: "#/components/schemas/ChargePointCreateRequest"}
+    StationUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: integer, minimum: 1}
+        name: {type: string}
+        description: {type: [string, "null"]}
+        address_line_1: {type: string}
+        address_line_2: {type: [string, "null"]}
+        city: {type: string}
+        state: {type: string}
+        postal_code: {type: string}
+        country_code: {type: string}
+        latitude: {type: number, minimum: -90, maximum: 90}
+        longitude: {type: number, minimum: -180, maximum: 180}
+        timezone: {type: string}
+        phone: {type: [string, "null"]}
+        is_24_hours: {type: boolean}
+        status: {type: string}
+    ChargePointUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: integer, minimum: 1}
+        max_power_kw: {type: number, exclusiveMinimum: 0}
+        booking_fee: {type: number, minimum: 0}
+        is_bookable: {type: boolean}
+        status: {type: string}
+    BookingHoldRequest:
+      type: object
+      additionalProperties: false
+      required: [charge_point_id, starts_at, ends_at]
+      properties:
+        charge_point_id: {type: string, format: uuid}
+        starts_at: {type: string, format: date-time}
+        ends_at: {type: string, format: date-time}
+    BookingStatus:
+      type: string
+      enum: [held, payment_pending, confirmed, active, completed, cancelled, expired]
+    VersionRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: integer, minimum: 1}
+    PaymentOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [booking_id, booking_version, idempotency_key]
+      properties:
+        booking_id: {type: string, format: uuid}
+        booking_version: {type: integer, minimum: 1}
+        idempotency_key: {type: string, format: uuid}
+    PaymentVerificationRequest:
+      type: object
+      additionalProperties: false
+      required: [razorpay_order_id, razorpay_payment_id, razorpay_signature]
+      properties:
+        razorpay_order_id: {type: string, maxLength: 100}
+        razorpay_payment_id: {type: string, maxLength: 100}
+        razorpay_signature: {type: string, minLength: 64, maxLength: 64}
+    StartSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [booking_id, booking_version, meter_start_kwh]
+      properties:
+        booking_id: {type: string, format: uuid}
+        booking_version: {type: integer, minimum: 1}
+        meter_start_kwh: {type: number, minimum: 0}
+    CompleteSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [version, meter_end_kwh]
+      properties:
+        version: {type: integer, minimum: 1}
+        meter_end_kwh: {type: number, minimum: 0}
