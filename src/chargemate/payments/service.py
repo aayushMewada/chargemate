@@ -17,6 +17,8 @@ from chargemate.payments.razorpay import (
     create_razorpay_order,
 )
 from chargemate.payments.schemas import CreatePaymentOrderRequest
+from chargemate.payments.schemas import VerifyCheckoutPaymentRequest
+from chargemate.payments.signatures import verify_checkout_signature
 
 
 CURRENCY_SUBUNITS = 100
@@ -32,6 +34,10 @@ class PaymentStateConflictError(Exception):
 
 class PaymentProviderError(Exception):
     """Raised after a provider failure has been recorded and compensated."""
+
+
+class PaymentVerificationError(Exception):
+    """Raised when checkout details are invalid or conflict with stored state."""
 
 
 @dataclass(frozen=True)
@@ -102,6 +108,62 @@ def create_payment_order(
         booking=finalized_booking,
         public_key_id=key_id,
     )
+
+
+def verify_checkout_payment(
+    user: User,
+    payload: VerifyCheckoutPaymentRequest,
+) -> Payment:
+    """Authenticate Checkout fields without treating them as captured funds."""
+
+    key_secret = current_app.config.get("RAZORPAY_KEY_SECRET")
+    if not key_secret:
+        raise PaymentConfigurationError
+
+    try:
+        payment = db.session.scalar(
+            select(Payment)
+            .where(
+                Payment.provider_order_id == payload.razorpay_order_id,
+                Payment.user_id == user.id,
+            )
+            .with_for_update()
+        )
+        if payment is None or not verify_checkout_signature(
+            order_id=payment.provider_order_id,
+            payment_id=payload.razorpay_payment_id,
+            supplied_signature=payload.razorpay_signature,
+            key_secret=key_secret,
+        ):
+            raise PaymentVerificationError
+
+        if payment.provider_payment_id is not None:
+            if payment.provider_payment_id != payload.razorpay_payment_id:
+                raise PaymentVerificationError
+            if payment.status in (
+                PaymentStatus.AUTHORIZED,
+                PaymentStatus.CAPTURED,
+            ):
+                db.session.commit()
+                return payment
+
+        if payment.status != PaymentStatus.ORDER_CREATED:
+            raise PaymentVerificationError
+
+        payment.provider_payment_id = payload.razorpay_payment_id
+        payment.status = PaymentStatus.AUTHORIZED
+        db.session.commit()
+    except PaymentVerificationError:
+        db.session.rollback()
+        raise
+    except IntegrityError as error:
+        db.session.rollback()
+        raise PaymentVerificationError from error
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return payment
 
 
 def _begin_payment_attempt(
@@ -206,7 +268,7 @@ def _compensate_provider_failure(payment_id: UUID, booking_id: UUID) -> None:
         if booking.status == BookingStatus.PAYMENT_PENDING:
             booking.status = (
                 BookingStatus.HELD
-                if _timestamp_is_after(booking.hold_expires_at, now)
+                if timestamp_is_after(booking.hold_expires_at, now)
                 else BookingStatus.EXPIRED
             )
             booking.version += 1
@@ -241,7 +303,7 @@ def _booking_can_enter_payment(
         booking is not None
         and booking.status == BookingStatus.HELD
         and booking.version == expected_version
-        and _timestamp_is_after(booking.hold_expires_at, now)
+        and timestamp_is_after(booking.hold_expires_at, now)
         and booking.total_amount is not None
         and booking.total_amount > 0
     )
@@ -254,7 +316,7 @@ def _to_currency_subunits(amount: Decimal) -> int:
     return int(subunits)
 
 
-def _timestamp_is_after(
+def timestamp_is_after(
     timestamp: datetime | None,
     reference: datetime,
 ) -> bool:
