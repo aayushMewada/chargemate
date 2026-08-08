@@ -29,18 +29,21 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details: ValidationDetail[];
+  readonly payload: unknown;
 
   constructor(
     status: number,
     code: string,
     message: string,
     details: ValidationDetail[] = [],
+    payload: unknown = null,
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.payload = payload;
   }
 }
 
@@ -132,5 +135,6 @@ async function toApiError(response: Response): Promise<ApiError> {
     body.error?.code ?? "request_failed",
     body.error?.message ?? "ChargeMate could not complete the request.",
     body.error?.details ?? [],
+    body,
   );
 }

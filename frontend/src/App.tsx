@@ -2,6 +2,7 @@ import {useEffect, useMemo, useState} from "react";
 import {searchExternalStations, searchManagedStations} from "./api/stations";
 import {useAuth} from "./auth/AuthContext";
 import {AuthDialog, type AuthMode} from "./components/AuthDialog";
+import {BookingsPanel} from "./components/BookingsPanel";
 import {StationCard} from "./components/StationCard";
 import {StationDetailsPanel} from "./components/StationDetailsPanel";
 import {StationMap} from "./components/StationMap";
@@ -14,6 +15,7 @@ export function App() {
   const {status: authStatus, user, logout} = useAuth();
   const [authDialogMode, setAuthDialogMode] = useState<AuthMode | null>(null);
   const [detailsStation, setDetailsStation] = useState<StationMarker | null>(null);
+  const [bookingsOpen, setBookingsOpen] = useState(false);
   const [center, setCenter] = useState<Coordinates>(INDORE);
   const [radiusKm, setRadiusKm] = useState(25);
   const [stations, setStations] = useState<StationMarker[]>([]);
@@ -114,6 +116,13 @@ export function App() {
             <span className="auth-loading">Checking session...</span>
           ) : user ? (
             <div className="account-actions">
+              <button
+                className="nav-link-button"
+                type="button"
+                onClick={() => setBookingsOpen(true)}
+              >
+                My bookings
+              </button>
               <a className="user-pill" href="#account" title={user.email}>
                 <span>{user.full_name.charAt(0).toUpperCase()}</span>
                 {user.full_name}
@@ -285,6 +294,10 @@ export function App() {
         station={detailsStation}
         onClose={() => setDetailsStation(null)}
         onRequireLogin={() => setAuthDialogMode("login")}
+      />
+      <BookingsPanel
+        open={bookingsOpen && Boolean(user)}
+        onClose={() => setBookingsOpen(false)}
       />
     </main>
   );
