@@ -36,6 +36,15 @@ class BaseConfig:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
 
+    RATE_LIMITING_ENABLED = True
+    RATE_LIMIT_WINDOW_SECONDS = 60
+    REGISTER_RATE_LIMIT_REQUESTS = 5
+    LOGIN_RATE_LIMIT_REQUESTS = 10
+    REFRESH_RATE_LIMIT_REQUESTS = 30
+    EXTERNAL_STATION_RATE_LIMIT_REQUESTS = 30
+    TRUST_PROXY_HEADERS = False
+    ENABLE_HSTS = False
+
 
 class DevelopmentConfig(BaseConfig):
     """Configuration used while developing locally."""
@@ -51,6 +60,7 @@ class TestingConfig(BaseConfig):
     JWT_SECRET_KEY = "testing-only-jwt-secret-key-at-least-32-bytes"
     SQLALCHEMY_DATABASE_URI = "sqlite+pysqlite:///:memory:"
     REDIS_URL = "redis://localhost:6379/15"
+    RATE_LIMITING_ENABLED = False
 
 
 class ProductionConfig(BaseConfig):
@@ -58,6 +68,7 @@ class ProductionConfig(BaseConfig):
 
     SESSION_COOKIE_SECURE = True
     REFRESH_COOKIE_SECURE = True
+    ENABLE_HSTS = True
 
 
 CONFIGURATIONS: dict[str, type[BaseConfig]] = {

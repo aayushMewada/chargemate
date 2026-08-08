@@ -7,6 +7,7 @@ from chargemate.auth.decorators import roles_required
 from chargemate.models.charge_point import ChargePoint
 from chargemate.models.station import ChargingStation
 from chargemate.models.user import UserRole
+from chargemate.security.rate_limit import rate_limit
 from chargemate.stations.external_service import find_external_stations
 from chargemate.stations.providers.open_charge_map import (
     ExternalStationProviderError,
@@ -32,6 +33,10 @@ stations_blueprint = Blueprint("stations", __name__, url_prefix="/stations")
 
 
 @stations_blueprint.get("/external")
+@rate_limit(
+    "stations:external",
+    requests_config="EXTERNAL_STATION_RATE_LIMIT_REQUESTS",
+)
 def list_external_charging_stations():
     """Return normalized open-data charging locations near a coordinate."""
 

@@ -20,12 +20,14 @@ from chargemate.auth.service import (
 )
 from chargemate.auth.tokens import IssuedRefreshToken
 from chargemate.models.user import User
+from chargemate.security.rate_limit import rate_limit
 
 
 auth_blueprint = Blueprint("auth", __name__, url_prefix="/auth")
 
 
 @auth_blueprint.post("/register")
+@rate_limit("auth:register", requests_config="REGISTER_RATE_LIMIT_REQUESTS")
 def register() -> tuple[dict[str, Any], int]:
     """Register a user from a validated JSON request."""
     if not request.is_json:
@@ -57,6 +59,7 @@ def register() -> tuple[dict[str, Any], int]:
 
 
 @auth_blueprint.post("/login")
+@rate_limit("auth:login", requests_config="LOGIN_RATE_LIMIT_REQUESTS")
 def login() -> Response | tuple[dict[str, Any], int]:
     """Authenticate a user from an email address or username."""
     if not request.is_json:
@@ -89,6 +92,7 @@ def login() -> Response | tuple[dict[str, Any], int]:
 
 
 @auth_blueprint.post("/refresh")
+@rate_limit("auth:refresh", requests_config="REFRESH_RATE_LIMIT_REQUESTS")
 def refresh() -> Response | tuple[dict[str, Any], int]:
     """Rotate the refresh cookie and issue a new access token."""
     raw_refresh_token = request.cookies.get(
