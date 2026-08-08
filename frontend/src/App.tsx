@@ -1,5 +1,7 @@
 import {useEffect, useMemo, useState} from "react";
 import {searchExternalStations, searchManagedStations} from "./api/stations";
+import {useAuth} from "./auth/AuthContext";
+import {AuthDialog, type AuthMode} from "./components/AuthDialog";
 import {StationCard} from "./components/StationCard";
 import {StationMap} from "./components/StationMap";
 import type {Coordinates, StationMarker} from "./types/station";
@@ -8,6 +10,8 @@ const INDORE: Coordinates = {latitude: 22.7196, longitude: 75.8577};
 type SourceFilter = "all" | "bookable" | "external";
 
 export function App() {
+  const {status: authStatus, user, logout} = useAuth();
+  const [authDialogMode, setAuthDialogMode] = useState<AuthMode | null>(null);
   const [center, setCenter] = useState<Coordinates>(INDORE);
   const [radiusKm, setRadiusKm] = useState(25);
   const [stations, setStations] = useState<StationMarker[]>([]);
@@ -98,7 +102,46 @@ export function App() {
         <nav aria-label="Primary navigation">
           <a href="#stations">Stations</a>
           <a href="#how-it-works">How it works</a>
-          <button className="login-button" type="button">Log in</button>
+          {authStatus === "loading" ? (
+            <span className="auth-loading">Checking session...</span>
+          ) : user ? (
+            <div className="account-actions">
+              <a className="user-pill" href="#account" title={user.email}>
+                <span>{user.full_name.charAt(0).toUpperCase()}</span>
+                {user.full_name}
+              </a>
+              <button
+                className="login-button"
+                type="button"
+                onClick={() => {
+                  void logout().catch(() => {
+                    setMessage(
+                      "The local session was cleared, but the server could not be reached.",
+                    );
+                  });
+                }}
+              >
+                Log out
+              </button>
+            </div>
+          ) : (
+            <div className="account-actions">
+              <button
+                className="login-button"
+                type="button"
+                onClick={() => setAuthDialogMode("login")}
+              >
+                Log in
+              </button>
+              <button
+                className="signup-button"
+                type="button"
+                onClick={() => setAuthDialogMode("register")}
+              >
+                Create account
+              </button>
+            </div>
+          )}
         </nav>
       </header>
 
@@ -123,6 +166,21 @@ export function App() {
           <strong>Book before<br />you drive.</strong>
         </div>
       </section>
+
+      {user && (
+        <section className="account-summary" id="account">
+          <div>
+            <p className="eyebrow">Signed in securely</p>
+            <h2>{user.full_name}</h2>
+            <p>{user.email} · @{user.username}</p>
+          </div>
+          <dl>
+            <div><dt>Account role</dt><dd>{user.role.replace("_", " ")}</dd></div>
+            <div><dt>Member since</dt><dd>{new Date(user.created_at).toLocaleDateString()}</dd></div>
+            <div><dt>Phone</dt><dd>{user.phone ?? "Not provided"}</dd></div>
+          </dl>
+        </section>
+      )}
 
       <section className="explorer" id="stations">
         <div className="section-heading">
@@ -209,6 +267,12 @@ export function App() {
           <article><span>03</span><h3>Charge</h3><p>Pay securely and keep a metered record of every session.</p></article>
         </div>
       </section>
+
+      <AuthDialog
+        open={authDialogMode !== null}
+        initialMode={authDialogMode ?? "login"}
+        onClose={() => setAuthDialogMode(null)}
+      />
     </main>
   );
 }

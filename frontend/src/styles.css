@@ -39,6 +39,11 @@ nav {display: flex; align-items: center; gap: 26px;}
 nav a {color: var(--muted); text-decoration: none; font-size: 14px;}
 nav a:hover {color: var(--ink);}
 .login-button {padding: 10px 17px; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 999px; cursor: pointer;}
+.signup-button {padding: 10px 17px; color: #0b201a; background: var(--lime); border: 1px solid var(--lime); border-radius: 999px; font-weight: 700; cursor: pointer;}
+.account-actions {display: flex; align-items: center; gap: 9px;}
+.auth-loading {color: var(--muted); font-size: 13px;}
+.user-pill {display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; font-weight: 700;}
+.user-pill span {display: grid; place-items: center; width: 31px; height: 31px; color: #12271f; background: var(--lime); border-radius: 50%;}
 
 .hero {
   position: relative;
@@ -66,6 +71,14 @@ h1 span {color: var(--lime);}
 .hero-stat p {margin: 12px 0 20px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .12em;}
 .hero-stat strong {font: 700 29px/1.25 "Manrope";}
 .pulse {display: block; width: 13px; height: 13px; background: var(--lime); border-radius: 50%; box-shadow: 0 0 0 8px rgba(199, 243, 107, .12);}
+
+.account-summary {width: min(1180px, calc(100% - 40px)); margin: 0 auto 70px; padding: 27px 30px; display: flex; align-items: center; justify-content: space-between; gap: 30px; background: linear-gradient(135deg, #102d25, #173b30); border: 1px solid var(--line); border-radius: 18px;}
+.account-summary h2 {margin: 0 0 6px; font-size: 28px;}
+.account-summary p:not(.eyebrow) {margin: 0; color: var(--muted);}
+.account-summary dl {display: flex; gap: 35px; margin: 0;}
+.account-summary dl div {display: grid; gap: 4px;}
+.account-summary dt {color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;}
+.account-summary dd {margin: 0; font-weight: 700; text-transform: capitalize;}
 
 .explorer {padding: 74px max(20px, calc((100vw - 1180px) / 2)) 90px; color: #13241f; background: #f1f5ef;}
 .section-heading {display: flex; align-items: end; justify-content: space-between; gap: 25px; margin-bottom: 28px;}
@@ -115,9 +128,31 @@ h1 span {color: var(--lime);}
 .step-grid h3 {margin: 26px 0 8px; font-size: 22px;}
 .step-grid p {margin: 0; color: #617069; line-height: 1.55;}
 
+.dialog-backdrop {position: fixed; z-index: 2000; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(2, 13, 10, .78); backdrop-filter: blur(8px); overflow-y: auto;}
+.auth-dialog {position: relative; width: min(510px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; padding: 34px; color: #14251f; background: #f7faf5; border: 1px solid rgba(255,255,255,.25); border-radius: 20px; box-shadow: 0 35px 100px rgba(0,0,0,.48);}
+.auth-dialog .eyebrow {color: #557916;}
+.auth-dialog h2 {margin-bottom: 8px; font-size: 31px; letter-spacing: -.035em;}
+.dialog-intro {margin: 0 35px 22px 0; color: #687970; line-height: 1.5;}
+.dialog-close {position: absolute; top: 18px; right: 18px; width: 34px; height: 34px; color: #4c5f56; background: transparent; border: 1px solid #d2ddd7; border-radius: 50%; font-size: 22px; line-height: 1; cursor: pointer;}
+.auth-tabs {display: grid; grid-template-columns: 1fr 1fr; padding: 4px; margin-bottom: 19px; background: #e7eee9; border-radius: 10px;}
+.auth-tabs button {padding: 10px; color: #66776f; background: transparent; border: 0; border-radius: 7px; font-weight: 700; cursor: pointer;}
+.auth-tabs button.auth-tab--active {color: #10271f; background: white; box-shadow: 0 3px 10px rgba(23, 54, 43, .08);}
+.auth-form {display: grid; gap: 14px;}
+.auth-form label {display: grid; gap: 6px; color: #344a41; font-size: 13px; font-weight: 700;}
+.auth-form label span {color: #83918b; font-size: 11px; font-weight: 500;}
+.auth-form input {width: 100%; height: 46px; padding: 0 13px; color: #14251f; background: white; border: 1px solid #cbd8d1; border-radius: 9px;}
+.auth-form input:focus {border-color: #658d1d; outline: 3px solid rgba(126, 171, 37, .15);}
+.auth-submit {height: 48px; margin-top: 3px; color: #102019; background: var(--lime); border: 1px solid #afd853; border-radius: 9px; font-weight: 800; cursor: pointer;}
+.form-error {padding: 12px 14px; color: #8f2b24; background: #fff0ed; border: 1px solid #f1c8c2; border-radius: 9px; font-size: 13px;}
+.form-error strong {display: block;}
+.form-error ul {margin: 7px 0 0; padding-left: 18px;}
+.auth-security-note {margin: 17px 0 0; color: #718179; font-size: 11px; line-height: 1.5; text-align: center;}
+
 @media (max-width: 900px) {
   .hero {grid-template-columns: 1fr; min-height: auto; padding: 90px 0;}
   .hero-stat {display: none;}
+  .account-summary {align-items: flex-start; flex-direction: column;}
+  .account-summary dl {width: 100%; justify-content: space-between;}
   .explorer-grid {height: auto; grid-template-columns: 1fr;}
   .station-list {max-height: 420px;}
   .map-shell {height: 520px; grid-row: 1;}
@@ -127,6 +162,7 @@ h1 span {color: var(--lime);}
 @media (max-width: 640px) {
   .site-header {height: 68px;}
   nav a {display: none;}
+  .signup-button, .user-pill {display: none;}
   .hero {padding: 65px 0 75px;}
   h1 {font-size: 48px;}
   .hero-actions, .section-heading, .search-controls {align-items: stretch; flex-direction: column;}
@@ -135,4 +171,6 @@ h1 span {color: var(--lime);}
   .filter-row {align-items: flex-start; flex-wrap: wrap;}
   .filter-row span {width: 100%; margin: 5px 0 0;}
   .map-shell {height: 430px;}
+  .account-summary dl {flex-direction: column; gap: 16px;}
+  .auth-dialog {padding: 28px 20px;}
 }
