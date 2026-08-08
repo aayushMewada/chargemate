@@ -2,6 +2,9 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy.dialects import postgresql
+
+from chargemate.bookings.service import _locked_charge_point_statement
 from chargemate.extensions import db
 from chargemate.models.booking import Booking, BookingStatus
 from chargemate.models.charge_point import (
@@ -14,6 +17,18 @@ from chargemate.models.station import ChargingStation, StationStatus
 
 
 PASSWORD = "Booking-Test-Password-2026"
+
+
+def test_booking_lock_uses_postgres_compatible_inner_join():
+    """Prevent FOR UPDATE from being combined with a nullable outer join."""
+    statement = _locked_charge_point_statement(
+        UUID("00000000-0000-0000-0000-000000000001")
+    )
+    sql = str(statement.compile(dialect=postgresql.dialect())).upper()
+
+    assert " JOIN CHARGING_STATIONS" in sql
+    assert "LEFT OUTER JOIN" not in sql
+    assert "FOR UPDATE" in sql
 
 
 def _register_and_login(client, suffix: str) -> tuple[dict, str]:

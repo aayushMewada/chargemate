@@ -5,7 +5,7 @@ from uuid import UUID
 from flask import current_app
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import contains_eager
 
 from chargemate.bookings.schemas import BookingHoldRequest, BookingListQuery
 from chargemate.extensions import db
@@ -60,10 +60,7 @@ def create_booking_hold(user: User, payload: BookingHoldRequest) -> Booking:
 
     try:
         charge_point = db.session.scalar(
-            select(ChargePoint)
-            .options(joinedload(ChargePoint.station))
-            .where(ChargePoint.id == payload.charge_point_id)
-            .with_for_update()
+            _locked_charge_point_statement(payload.charge_point_id)
         )
         if not _charge_point_accepts_bookings(charge_point):
             raise BookingUnavailableError
@@ -103,6 +100,23 @@ def create_booking_hold(user: User, payload: BookingHoldRequest) -> Booking:
         raise
 
     return booking
+
+
+def _locked_charge_point_statement(charge_point_id: UUID):
+    """Load and lock a charge point and its required parent station.
+
+    An explicit inner join matters here. PostgreSQL cannot apply FOR UPDATE to
+    the nullable side of the outer join produced by joinedload(). Every charge
+    point has a non-null station_id, so an inner join correctly represents the
+    data model and lets PostgreSQL lock both rows for the booking transaction.
+    """
+    return (
+        select(ChargePoint)
+        .join(ChargePoint.station)
+        .options(contains_eager(ChargePoint.station))
+        .where(ChargePoint.id == charge_point_id)
+        .with_for_update()
+    )
 
 
 def find_user_bookings(user_id: UUID, query: BookingListQuery) -> BookingPage:
