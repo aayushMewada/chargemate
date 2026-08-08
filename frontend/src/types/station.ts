@@ -60,6 +60,7 @@ export type StationMarker = Coordinates & {
   status: string;
   distanceKm: number | null;
   connectorSummary: string;
+  externalDetailsUrl: string | null;
 };
 
 export type ManagedStationResponse = {
@@ -70,6 +71,10 @@ export type ManagedStationResponse = {
     total: number;
     pages: number;
   };
+};
+
+export type ManagedStationDetailResponse = {
+  station: ManagedStation;
 };
 
 export type ExternalStationResponse = {

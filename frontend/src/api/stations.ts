@@ -4,6 +4,7 @@ import type {
   ExternalStation,
   ExternalStationResponse,
   ManagedStation,
+  ManagedStationDetailResponse,
   ManagedStationResponse,
   StationMarker,
 } from "../types/station";
@@ -38,6 +39,17 @@ export async function searchExternalStations(
   return response.stations.map(toExternalMarker);
 }
 
+export async function getManagedStation(
+  stationId: string,
+  signal?: AbortSignal,
+): Promise<ManagedStation> {
+  const response = await getJson<ManagedStationDetailResponse>(
+    `/stations/${stationId}`,
+    signal,
+  );
+  return response.station;
+}
+
 function stationQuery(search: StationSearch): URLSearchParams {
   return new URLSearchParams({
     latitude: String(search.latitude),
@@ -65,6 +77,7 @@ function toManagedMarker(station: ManagedStation): StationMarker {
     status: station.status,
     distanceKm: station.distance_km ?? null,
     connectorSummary: connectors || "No bookable connector currently available",
+    externalDetailsUrl: null,
   };
 }
 
@@ -95,5 +108,6 @@ function toExternalMarker(station: ExternalStation): StationMarker {
     status: station.status ?? "Status unknown",
     distanceKm: station.distance_km,
     connectorSummary: connectors || "Connector details unavailable",
+    externalDetailsUrl: station.details_url,
   };
 }

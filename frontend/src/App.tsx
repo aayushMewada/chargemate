@@ -3,6 +3,7 @@ import {searchExternalStations, searchManagedStations} from "./api/stations";
 import {useAuth} from "./auth/AuthContext";
 import {AuthDialog, type AuthMode} from "./components/AuthDialog";
 import {StationCard} from "./components/StationCard";
+import {StationDetailsPanel} from "./components/StationDetailsPanel";
 import {StationMap} from "./components/StationMap";
 import type {Coordinates, StationMarker} from "./types/station";
 
@@ -12,6 +13,7 @@ type SourceFilter = "all" | "bookable" | "external";
 export function App() {
   const {status: authStatus, user, logout} = useAuth();
   const [authDialogMode, setAuthDialogMode] = useState<AuthMode | null>(null);
+  const [detailsStation, setDetailsStation] = useState<StationMarker | null>(null);
   const [center, setCenter] = useState<Coordinates>(INDORE);
   const [radiusKm, setRadiusKm] = useState(25);
   const [stations, setStations] = useState<StationMarker[]>([]);
@@ -90,6 +92,12 @@ export function App() {
       () => setMessage("Location permission was not granted. You can continue with Indore."),
       {enableHighAccuracy: true, timeout: 10000},
     );
+  }
+
+  function openStation(stationId: string) {
+    setSelectedStationId(stationId);
+    const selected = stations.find((station) => station.id === stationId);
+    if (selected) setDetailsStation(selected);
   }
 
   return (
@@ -233,7 +241,7 @@ export function App() {
                   key={station.id}
                   station={station}
                   selected={selectedStationId === station.id}
-                  onSelect={() => setSelectedStationId(station.id)}
+                  onSelect={() => openStation(station.id)}
                 />
               ))
             ) : (
@@ -248,7 +256,7 @@ export function App() {
               center={center}
               stations={visibleStations}
               selectedStationId={selectedStationId}
-              onSelectStation={setSelectedStationId}
+              onSelectStation={openStation}
             />
             <div className="map-legend">
               <span><i className="legend-dot legend-dot--bookable" /> Bookable</span>
@@ -272,6 +280,11 @@ export function App() {
         open={authDialogMode !== null}
         initialMode={authDialogMode ?? "login"}
         onClose={() => setAuthDialogMode(null)}
+      />
+      <StationDetailsPanel
+        station={detailsStation}
+        onClose={() => setDetailsStation(null)}
+        onRequireLogin={() => setAuthDialogMode("login")}
       />
     </main>
   );
