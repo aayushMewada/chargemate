@@ -2,7 +2,12 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from chargemate.models.charge_point import ConnectorType, PowerType
+from chargemate.models.charge_point import (
+    ChargePointStatus,
+    ConnectorType,
+    PowerType,
+)
+from chargemate.models.station import StationStatus
 
 
 class ChargePointCreateRequest(BaseModel):
@@ -62,6 +67,116 @@ class StationCreateRequest(BaseModel):
         if len(codes) != len(set(codes)):
             raise ValueError("charge point codes must be unique within a station")
         return self
+
+
+class StationUpdateRequest(BaseModel):
+    """Editable station fields plus the dashboard's expected version."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    version: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+    address_line_1: str | None = Field(default=None, min_length=3, max_length=255)
+    address_line_2: str | None = Field(default=None, max_length=255)
+    city: str | None = Field(default=None, min_length=2, max_length=100)
+    state: str | None = Field(default=None, min_length=2, max_length=100)
+    postal_code: str | None = Field(default=None, min_length=3, max_length=20)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    latitude: Decimal | None = Field(
+        default=None,
+        ge=-90,
+        le=90,
+        max_digits=9,
+        decimal_places=6,
+    )
+    longitude: Decimal | None = Field(
+        default=None,
+        ge=-180,
+        le=180,
+        max_digits=9,
+        decimal_places=6,
+    )
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    phone: str | None = Field(default=None, min_length=7, max_length=20)
+    is_24_hours: bool | None = None
+    status: StationStatus | None = None
+
+    @field_validator("country_code")
+    @classmethod
+    def normalize_optional_country_code(cls, country_code: str | None):
+        return country_code.upper() if country_code is not None else None
+
+    @model_validator(mode="after")
+    def contains_an_update(self) -> "StationUpdateRequest":
+        if not self.model_fields_set.difference({"version"}):
+            raise ValueError("at least one station field must be updated")
+        required_fields = {
+            "name",
+            "address_line_1",
+            "city",
+            "state",
+            "postal_code",
+            "country_code",
+            "latitude",
+            "longitude",
+            "timezone",
+            "is_24_hours",
+            "status",
+        }
+        if any(
+            field in self.model_fields_set and getattr(self, field) is None
+            for field in required_fields
+        ):
+            raise ValueError("required station fields cannot be null")
+        return self
+
+
+class ChargePointUpdateRequest(BaseModel):
+    """Editable charge-point fields plus its expected version."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    max_power_kw: Decimal | None = Field(
+        default=None,
+        gt=0,
+        max_digits=7,
+        decimal_places=2,
+    )
+    booking_fee: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=10,
+        decimal_places=2,
+    )
+    is_bookable: bool | None = None
+    status: ChargePointStatus | None = None
+
+    @model_validator(mode="after")
+    def contains_an_update(self) -> "ChargePointUpdateRequest":
+        if not self.model_fields_set.difference({"version"}):
+            raise ValueError("at least one charge-point field must be updated")
+        if any(
+            field in self.model_fields_set and getattr(self, field) is None
+            for field in {
+                "max_power_kw",
+                "booking_fee",
+                "is_bookable",
+                "status",
+            }
+        ):
+            raise ValueError("charge-point fields cannot be null")
+        return self
+
+
+class OwnedStationListQuery(BaseModel):
+    """Pagination accepted by the station-owner dashboard."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=20, ge=1, le=100)
 
 
 class StationSearchQuery(BaseModel):

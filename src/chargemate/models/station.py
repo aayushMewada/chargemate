@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -50,6 +51,7 @@ class ChargingStation(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
             "country_code = upper(country_code)",
             name="country_code_uppercase",
         ),
+        CheckConstraint("version > 0", name="positive_version"),
         Index("ix_charging_stations_city_status", "city", "status"),
     )
 
@@ -95,6 +97,12 @@ class ChargingStation(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
         nullable=False,
         default=StationStatus.DRAFT,
         server_default=StationStatus.DRAFT.value,
+    )
+    version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
     )
 
     owner: Mapped["User"] = relationship(back_populates="charging_stations")

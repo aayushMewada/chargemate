@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     Enum,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     UniqueConstraint,
@@ -58,6 +59,7 @@ class ChargePoint(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
         UniqueConstraint("station_id", "code", name="station_code"),
         CheckConstraint("max_power_kw > 0", name="positive_max_power_kw"),
         CheckConstraint("booking_fee >= 0", name="non_negative_booking_fee"),
+        CheckConstraint("version > 0", name="positive_version"),
     )
 
     station_id: Mapped[UUID] = mapped_column(
@@ -104,6 +106,12 @@ class ChargePoint(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
         nullable=False,
         default=ChargePointStatus.AVAILABLE,
         server_default=ChargePointStatus.AVAILABLE.value,
+    )
+    version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
     )
 
     station: Mapped["ChargingStation"] = relationship(back_populates="charge_points")

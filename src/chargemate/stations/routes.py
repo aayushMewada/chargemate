@@ -17,15 +17,23 @@ from chargemate.stations.cache import (
     store_station_search,
 )
 from chargemate.stations.schemas import (
+    ChargePointUpdateRequest,
     ExternalStationSearchQuery,
+    OwnedStationListQuery,
     StationCreateRequest,
     StationSearchQuery,
+    StationUpdateRequest,
 )
 from chargemate.stations.service import (
     StationConflictError,
+    StationNotFoundError,
+    StationStateConflictError,
     create_station,
+    find_owned_stations,
     find_public_stations,
     get_public_station,
+    update_charge_point,
+    update_station,
 )
 
 
@@ -115,6 +123,28 @@ def get_charging_station(station_id):
     return {"station": _serialize_station(station)}, 200
 
 
+@stations_blueprint.get("/mine")
+@roles_required(UserRole.STATION_ADMIN, UserRole.SYSTEM_ADMIN)
+def list_my_stations():
+    """Return all station states owned by the current administrator."""
+
+    try:
+        query = OwnedStationListQuery.model_validate(request.args)
+    except ValidationError as error:
+        return _validation_error_response(error)
+
+    page = find_owned_stations(g.current_user.id, query)
+    return {
+        "stations": [_serialize_station(station) for station in page.items],
+        "pagination": {
+            "page": page.page,
+            "per_page": page.per_page,
+            "total": page.total,
+            "pages": (page.total + page.per_page - 1) // page.per_page,
+        },
+    }, 200
+
+
 @stations_blueprint.post("")
 @roles_required(UserRole.STATION_ADMIN, UserRole.SYSTEM_ADMIN)
 def create_charging_station():
@@ -134,6 +164,55 @@ def create_charging_station():
         }, 409
 
     return {"station": _serialize_station(station)}, 201
+
+
+@stations_blueprint.patch("/<uuid:station_id>")
+@roles_required(UserRole.STATION_ADMIN, UserRole.SYSTEM_ADMIN)
+def update_my_station(station_id):
+    """Update an owned station using its expected version."""
+
+    try:
+        payload = StationUpdateRequest.model_validate(request.get_json(silent=True))
+        station = update_station(g.current_user, station_id, payload)
+    except ValidationError as error:
+        return _validation_error_response(error)
+    except StationNotFoundError:
+        return _station_not_found_response()
+    except StationStateConflictError:
+        return _state_conflict_response()
+    except StationConflictError:
+        return _station_conflict_response()
+
+    return {"station": _serialize_station(station)}, 200
+
+
+@stations_blueprint.patch(
+    "/<uuid:station_id>/charge-points/<uuid:charge_point_id>"
+)
+@roles_required(UserRole.STATION_ADMIN, UserRole.SYSTEM_ADMIN)
+def update_my_charge_point(station_id, charge_point_id):
+    """Update one charge point belonging to an owned station."""
+
+    try:
+        payload = ChargePointUpdateRequest.model_validate(
+            request.get_json(silent=True)
+        )
+        charge_point = update_charge_point(
+            g.current_user,
+            station_id,
+            charge_point_id,
+            payload,
+        )
+    except ValidationError as error:
+        return _validation_error_response(error)
+    except StationNotFoundError:
+        return _station_not_found_response()
+    except StationStateConflictError:
+        return _state_conflict_response()
+    except StationConflictError:
+        return _station_conflict_response()
+
+    return {"charge_point": _serialize_charge_point(charge_point)}, 200
 
 
 def _serialize_station(
@@ -158,6 +237,7 @@ def _serialize_station(
         "phone": station.phone,
         "is_24_hours": station.is_24_hours,
         "status": station.status.value,
+        "version": station.version,
         "charge_points": [
             _serialize_charge_point(charge_point)
             for charge_point in station.charge_points
@@ -179,6 +259,7 @@ def _serialize_charge_point(charge_point: ChargePoint) -> dict:
         "booking_fee": _decimal_to_float(charge_point.booking_fee),
         "is_bookable": charge_point.is_bookable,
         "status": charge_point.status.value,
+        "version": charge_point.version,
     }
 
 
@@ -204,3 +285,30 @@ def _validation_error_response(error: ValidationError) -> tuple[dict, int]:
             ],
         }
     }, 422
+
+
+def _station_not_found_response() -> tuple[dict, int]:
+    return {
+        "error": {
+            "code": "station_not_found",
+            "message": "The charging station was not found.",
+        }
+    }, 404
+
+
+def _state_conflict_response() -> tuple[dict, int]:
+    return {
+        "error": {
+            "code": "station_state_conflict",
+            "message": "The station data changed or violates an operational rule.",
+        }
+    }, 409
+
+
+def _station_conflict_response() -> tuple[dict, int]:
+    return {
+        "error": {
+            "code": "station_conflict",
+            "message": "The station conflicts with existing data.",
+        }
+    }, 409

@@ -238,3 +238,135 @@ def test_public_list_rejects_invalid_or_unknown_query_parameters(client):
     assert unknown_filter.get_json()["error"]["code"] == "validation_error"
     assert incomplete_location.status_code == 422
     assert incomplete_location.get_json()["error"]["code"] == "validation_error"
+
+
+def test_station_admin_lists_only_owned_stations(client, app):
+    first_user = _register_user(client, "owned_station_admin")
+    _promote_user(app, first_user["id"], UserRole.STATION_ADMIN)
+    first_token = _login(client, first_user["email"])
+    owned_station = _create_station(client, first_token)
+
+    second_user = _register_user(client, "other_station_admin")
+    _promote_user(app, second_user["id"], UserRole.STATION_ADMIN)
+    second_token = _login(client, second_user["email"])
+    _create_station(client, second_token)
+
+    response = client.get(
+        "/stations/mine",
+        headers={"Authorization": f"Bearer {first_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["pagination"]["total"] == 1
+    assert response.get_json()["stations"][0]["id"] == owned_station["id"]
+
+
+def test_station_update_increments_version(client, app):
+    user = _register_user(client, "update_station_admin")
+    _promote_user(app, user["id"], UserRole.STATION_ADMIN)
+    token = _login(client, user["email"])
+    station = _create_station(client, token)
+
+    response = client.patch(
+        f"/stations/{station['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "version": 1,
+            "name": "ChargeMate Updated Station",
+            "status": "active",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.get_json()["station"]
+    assert updated["name"] == "ChargeMate Updated Station"
+    assert updated["status"] == "active"
+    assert updated["version"] == 2
+
+
+def test_stale_station_update_is_rejected(client, app):
+    user = _register_user(client, "stale_station_admin")
+    _promote_user(app, user["id"], UserRole.STATION_ADMIN)
+    token = _login(client, user["email"])
+    station = _create_station(client, token)
+    first = client.patch(
+        f"/stations/{station['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"version": 1, "name": "First Dashboard Edit"},
+    )
+
+    stale = client.patch(
+        f"/stations/{station['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"version": 1, "name": "Stale Dashboard Edit"},
+    )
+
+    assert first.status_code == 200
+    assert stale.status_code == 409
+    assert stale.get_json()["error"]["code"] == "station_state_conflict"
+
+
+def test_station_admin_cannot_edit_another_owners_station(client, app):
+    owner = _register_user(client, "protected_station_owner")
+    _promote_user(app, owner["id"], UserRole.STATION_ADMIN)
+    owner_token = _login(client, owner["email"])
+    station = _create_station(client, owner_token)
+
+    other = _register_user(client, "station_update_intruder")
+    _promote_user(app, other["id"], UserRole.STATION_ADMIN)
+    other_token = _login(client, other["email"])
+    response = client.patch(
+        f"/stations/{station['id']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+        json={"version": 1, "name": "Unauthorized Edit"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_charge_point_update_increments_its_own_version(client, app):
+    user = _register_user(client, "update_point_admin")
+    _promote_user(app, user["id"], UserRole.STATION_ADMIN)
+    token = _login(client, user["email"])
+    station = _create_station(client, token)
+    charge_point = station["charge_points"][0]
+
+    response = client.patch(
+        f"/stations/{station['id']}/charge-points/{charge_point['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "version": 1,
+            "booking_fee": "99.00",
+            "is_bookable": False,
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.get_json()["charge_point"]
+    assert updated["booking_fee"] == 99.0
+    assert updated["is_bookable"] is False
+    assert updated["version"] == 2
+
+
+def test_station_without_bookable_charge_point_cannot_activate(client, app):
+    user = _register_user(client, "activation_rule_admin")
+    _promote_user(app, user["id"], UserRole.STATION_ADMIN)
+    token = _login(client, user["email"])
+    station = _create_station(client, token)
+
+    for charge_point in station["charge_points"]:
+        response = client.patch(
+            f"/stations/{station['id']}/charge-points/{charge_point['id']}",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"version": 1, "is_bookable": False},
+        )
+        assert response.status_code == 200
+
+    activation = client.patch(
+        f"/stations/{station['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"version": 1, "status": "active"},
+    )
+
+    assert activation.status_code == 409
+    assert activation.get_json()["error"]["code"] == "station_state_conflict"
