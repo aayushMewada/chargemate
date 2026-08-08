@@ -1,0 +1,68 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: chargemate_test
+          POSTGRES_USER: chargemate
+          POSTGRES_PASSWORD: chargemate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chargemate -d chargemate_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8.8.1-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      APP_ENV: development
+      SECRET_KEY: ci-only-secret-key-at-least-32-bytes
+      JWT_SECRET_KEY: ci-only-jwt-secret-key-at-least-32-bytes
+      DATABASE_URL: postgresql+psycopg://chargemate:chargemate@127.0.0.1:5432/chargemate_test?connect_timeout=5
+      REDIS_URL: redis://127.0.0.1:6379/0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install ".[dev]"
+
+      - name: Run automated tests
+        run: python -m pytest -q
+
+      - name: Apply PostgreSQL migrations
+        run: python -m flask --app chargemate:create_app db upgrade
+
+      - name: Verify migration head
+        run: python -m flask --app chargemate:create_app db current
+
+      - name: Build production image
+        run: docker build --tag chargemate-api:ci .
