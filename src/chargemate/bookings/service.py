@@ -1,11 +1,13 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from flask import current_app
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
-from chargemate.bookings.schemas import BookingHoldRequest
+from chargemate.bookings.schemas import BookingHoldRequest, BookingListQuery
 from chargemate.extensions import db
 from chargemate.models.booking import Booking, BookingStatus
 from chargemate.models.charge_point import ChargePoint, ChargePointStatus
@@ -20,6 +22,11 @@ BLOCKING_BOOKING_STATUSES = (
     BookingStatus.CONFIRMED,
     BookingStatus.ACTIVE,
 )
+CANCELLABLE_BOOKING_STATUSES = (
+    BookingStatus.HELD,
+    BookingStatus.PAYMENT_PENDING,
+    BookingStatus.CONFIRMED,
+)
 
 
 class BookingTimeError(Exception):
@@ -28,6 +35,20 @@ class BookingTimeError(Exception):
 
 class BookingUnavailableError(Exception):
     """Raised when a charge point or requested time slot cannot be held."""
+
+
+class BookingStateConflictError(Exception):
+    """Raised when a booking changed or can no longer be cancelled."""
+
+
+@dataclass(frozen=True)
+class BookingPage:
+    """One page of a user's bookings plus pagination metadata."""
+
+    items: list[Booking]
+    total: int
+    page: int
+    per_page: int
 
 
 def create_booking_hold(user: User, payload: BookingHoldRequest) -> Booking:
@@ -82,6 +103,87 @@ def create_booking_hold(user: User, payload: BookingHoldRequest) -> Booking:
     return booking
 
 
+def find_user_bookings(user_id: UUID, query: BookingListQuery) -> BookingPage:
+    """Expire stale holds and return a filtered page owned by one user."""
+
+    _expire_user_stale_holds(user_id, datetime.now(UTC))
+    db.session.commit()
+
+    filters = [Booking.user_id == user_id]
+    if query.status is not None:
+        filters.append(Booking.status == query.status)
+
+    total = db.session.scalar(
+        select(func.count()).select_from(Booking).where(*filters)
+    )
+    bookings = db.session.scalars(
+        select(Booking)
+        .where(*filters)
+        .order_by(Booking.starts_at.desc(), Booking.id)
+        .offset((query.page - 1) * query.per_page)
+        .limit(query.per_page)
+    ).all()
+    return BookingPage(
+        items=list(bookings),
+        total=total or 0,
+        page=query.page,
+        per_page=query.per_page,
+    )
+
+
+def get_user_booking(user_id: UUID, booking_id: UUID) -> Booking | None:
+    """Return one user-owned booking after applying hold expiration."""
+
+    _expire_user_stale_holds(user_id, datetime.now(UTC))
+    db.session.commit()
+    return db.session.scalar(
+        select(Booking).where(
+            Booking.id == booking_id,
+            Booking.user_id == user_id,
+        )
+    )
+
+
+def cancel_user_booking(
+    user_id: UUID,
+    booking_id: UUID,
+    expected_version: int,
+) -> Booking:
+    """Cancel a booking only if its current state and version still match."""
+
+    now = datetime.now(UTC)
+    try:
+        result = db.session.execute(
+            update(Booking)
+            .where(
+                Booking.id == booking_id,
+                Booking.user_id == user_id,
+                Booking.version == expected_version,
+                Booking.status.in_(CANCELLABLE_BOOKING_STATUSES),
+                or_(
+                    Booking.status != BookingStatus.HELD,
+                    Booking.hold_expires_at > now,
+                ),
+            )
+            .values(
+                status=BookingStatus.CANCELLED,
+                cancelled_at=now,
+                version=Booking.version + 1,
+            )
+        )
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise BookingStateConflictError
+        db.session.commit()
+    except BookingStateConflictError:
+        raise
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return db.session.get(Booking, booking_id)
+
+
 def _charge_point_accepts_bookings(charge_point: ChargePoint | None) -> bool:
     return bool(
         charge_point is not None
@@ -96,6 +198,21 @@ def _expire_stale_holds(charge_point_id, now: datetime) -> None:
         update(Booking)
         .where(
             Booking.charge_point_id == charge_point_id,
+            Booking.status == BookingStatus.HELD,
+            Booking.hold_expires_at <= now,
+        )
+        .values(
+            status=BookingStatus.EXPIRED,
+            version=Booking.version + 1,
+        )
+    )
+
+
+def _expire_user_stale_holds(user_id: UUID, now: datetime) -> None:
+    db.session.execute(
+        update(Booking)
+        .where(
+            Booking.user_id == user_id,
             Booking.status == BookingStatus.HELD,
             Booking.hold_expires_at <= now,
         )

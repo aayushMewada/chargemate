@@ -222,3 +222,140 @@ def test_unavailable_charge_point_cannot_be_held(client, app):
 
     assert response.status_code == 409
     assert response.get_json()["error"]["code"] == "booking_unavailable"
+
+
+def test_user_can_list_only_their_own_bookings(client, app):
+    first_user, first_token = _register_and_login(client, "booking_owner")
+    charge_point_id = _create_charge_point(app, first_user["id"])
+    starts_at = datetime.now(UTC) + timedelta(hours=1)
+    created = client.post(
+        "/bookings",
+        headers=_authorization(first_token),
+        json=_booking_payload(
+            charge_point_id,
+            starts_at,
+            starts_at + timedelta(hours=1),
+        ),
+    ).get_json()["booking"]
+    _, second_token = _register_and_login(client, "booking_other_user")
+
+    owner_list = client.get(
+        "/bookings/me",
+        headers=_authorization(first_token),
+    )
+    other_list = client.get(
+        "/bookings/me",
+        headers=_authorization(second_token),
+    )
+    other_detail = client.get(
+        f"/bookings/{created['id']}",
+        headers=_authorization(second_token),
+    )
+
+    assert owner_list.status_code == 200
+    assert owner_list.get_json()["pagination"]["total"] == 1
+    assert other_list.status_code == 200
+    assert other_list.get_json()["pagination"]["total"] == 0
+    assert other_detail.status_code == 404
+
+
+def test_cancellation_uses_version_and_releases_slot(client, app):
+    user, access_token = _register_and_login(client, "cancel_booking_user")
+    charge_point_id = _create_charge_point(app, user["id"])
+    starts_at = datetime.now(UTC) + timedelta(hours=1)
+    booking_payload = _booking_payload(
+        charge_point_id,
+        starts_at,
+        starts_at + timedelta(hours=1),
+    )
+    created = client.post(
+        "/bookings",
+        headers=_authorization(access_token),
+        json=booking_payload,
+    ).get_json()["booking"]
+
+    cancelled = client.post(
+        f"/bookings/{created['id']}/cancel",
+        headers=_authorization(access_token),
+        json={"version": 1},
+    )
+    stale_retry = client.post(
+        f"/bookings/{created['id']}/cancel",
+        headers=_authorization(access_token),
+        json={"version": 1},
+    )
+    replacement = client.post(
+        "/bookings",
+        headers=_authorization(access_token),
+        json=booking_payload,
+    )
+
+    assert cancelled.status_code == 200
+    assert cancelled.get_json()["booking"]["status"] == "cancelled"
+    assert cancelled.get_json()["booking"]["version"] == 2
+    assert stale_retry.status_code == 409
+    assert stale_retry.get_json()["error"]["code"] == "booking_state_conflict"
+    assert replacement.status_code == 201
+
+
+def test_booking_history_can_be_filtered_by_status(client, app):
+    user, access_token = _register_and_login(client, "filter_booking_user")
+    charge_point_id = _create_charge_point(app, user["id"])
+    starts_at = datetime.now(UTC) + timedelta(hours=1)
+    created = client.post(
+        "/bookings",
+        headers=_authorization(access_token),
+        json=_booking_payload(
+            charge_point_id,
+            starts_at,
+            starts_at + timedelta(hours=1),
+        ),
+    ).get_json()["booking"]
+    client.post(
+        f"/bookings/{created['id']}/cancel",
+        headers=_authorization(access_token),
+        json={"version": 1},
+    )
+
+    cancelled = client.get(
+        "/bookings/me?status=cancelled",
+        headers=_authorization(access_token),
+    )
+    held = client.get(
+        "/bookings/me?status=held",
+        headers=_authorization(access_token),
+    )
+
+    assert cancelled.status_code == 200
+    assert cancelled.get_json()["pagination"]["total"] == 1
+    assert held.status_code == 200
+    assert held.get_json()["pagination"]["total"] == 0
+
+
+def test_booking_detail_expires_stale_hold(client, app):
+    user, access_token = _register_and_login(client, "detail_expiry_user")
+    charge_point_id = _create_charge_point(app, user["id"])
+    starts_at = datetime.now(UTC) + timedelta(hours=1)
+    created = client.post(
+        "/bookings",
+        headers=_authorization(access_token),
+        json=_booking_payload(
+            charge_point_id,
+            starts_at,
+            starts_at + timedelta(hours=1),
+        ),
+    ).get_json()["booking"]
+
+    with app.app_context():
+        booking = db.session.get(Booking, UUID(created["id"]))
+        booking.hold_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        db.session.commit()
+
+    response = client.get(
+        f"/bookings/{created['id']}",
+        headers=_authorization(access_token),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["booking"]["status"] == "expired"
+    assert response.get_json()["booking"]["version"] == 2

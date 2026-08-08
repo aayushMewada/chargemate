@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from chargemate.models.booking import BookingStatus
 
 
 MAXIMUM_BOOKING_DURATION = timedelta(hours=8)
@@ -25,3 +27,21 @@ class BookingHoldRequest(BaseModel):
         if self.ends_at - self.starts_at > MAXIMUM_BOOKING_DURATION:
             raise ValueError("a booking cannot exceed eight hours")
         return self
+
+
+class BookingListQuery(BaseModel):
+    """Validated filters and pagination for a user's booking history."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: BookingStatus | None = None
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=20, ge=1, le=100)
+
+
+class CancelBookingRequest(BaseModel):
+    """The booking version the client expects to cancel."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
