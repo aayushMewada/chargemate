@@ -3,6 +3,7 @@ import {createBookingHold} from "../api/bookings";
 import {ApiError} from "../api/client";
 import {getManagedStation} from "../api/stations";
 import {useAuth} from "../auth/AuthContext";
+import {PaymentCheckout} from "./PaymentCheckout";
 import type {Booking} from "../types/booking";
 import type {ChargePoint, ManagedStation, StationMarker} from "../types/station";
 
@@ -194,6 +195,7 @@ export function StationDetailsPanel({
               )}
               {error && <div className="form-error" role="alert"><strong>{error}</strong></div>}
               {booking && <BookingHoldSuccess booking={booking} />}
+              {booking && <PaymentCheckout key={booking.id} booking={booking} />}
 
               <button
                 className="reserve-button"

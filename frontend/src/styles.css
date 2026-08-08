@@ -176,6 +176,13 @@ h1 span {color: var(--lime);}
 .login-callout, .information-callout {margin: 0; padding: 12px 14px; color: #71490c; background: #fff1d9; border: 1px solid #f0d29c; border-radius: 9px; font-size: 13px; line-height: 1.45;}
 .booking-success {display: grid; gap: 5px; padding: 14px; color: #315a0a; background: #eaf8d6; border: 1px solid #c6e59b; border-radius: 9px; font-size: 12px;}
 .booking-success strong {font-size: 14px;}
+.checkout-section {display: grid; gap: 12px; padding: 15px; background: #fff; border: 1px solid #d4ded9; border-radius: 10px;}
+.checkout-section > div:first-child {display: flex; justify-content: space-between; gap: 15px; font-size: 14px;}
+.checkout-section > div:first-child span {color: #426c08; font-weight: 800;}
+.checkout-section > p {margin: 0; color: #718179; font-size: 11px; line-height: 1.45;}
+.payment-button {height: 47px; color: #eef9f2; background: #163f33; border: 1px solid #163f33; border-radius: 9px; font-weight: 800; cursor: pointer;}
+.payment-verified {display: grid; gap: 6px; padding: 15px; color: #254f09; background: #eaf8d6; border: 1px solid #bfdf8c; border-radius: 10px; font-size: 12px; overflow-wrap: anywhere;}
+.payment-verified strong {font-size: 14px;}
 .external-details {display: grid; gap: 16px;}
 .external-details > p {margin: 0; color: #586b62; line-height: 1.55;}
 .external-details a {width: fit-content; color: #426c08; font-weight: 800; text-decoration: none;}
