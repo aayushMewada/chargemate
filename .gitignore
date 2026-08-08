@@ -209,6 +209,11 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Frontend dependencies and Vite output
+node_modules/
+frontend/dist/
+frontend/.vite/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

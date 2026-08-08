@@ -6,9 +6,8 @@ sessions. It is designed to demonstrate production-oriented backend concepts
 such as geospatial search, transactional concurrency control, token rotation,
 idempotent payments, caching, background jobs, and containerized deployment.
 
-The interactive map frontend will be added after the backend API is complete.
-It will use OpenStreetMap data with Leaflet or MapLibre, avoiding a paid map
-API for normal map rendering.
+The frontend uses React, TypeScript, Leaflet, and OpenStreetMap tiles. Normal
+map rendering requires no paid map API or browser-side secret.
 
 ## Main capabilities
 
@@ -30,6 +29,7 @@ API for normal map rendering.
 ## Technology
 
 - Python 3.12 and Flask
+- React, TypeScript, Vite, Leaflet, and OpenStreetMap
 - SQLAlchemy, Alembic, PostgreSQL 17, and PostGIS
 - Redis and RQ
 - Pydantic request validation
@@ -75,6 +75,18 @@ python -m flask --app chargemate:create_app run
 ```
 
 The development API is available at `http://127.0.0.1:5000`.
+
+Start the frontend in a second PowerShell window. Current Vite versions require
+Node.js 20.19 or newer (or 22.12 or newer).
+
+```powershell
+Set-Location frontend
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies browser requests beginning with
+`/api` to the local Flask server, so no development CORS exception is needed.
 
 ## Production-style containers
 
