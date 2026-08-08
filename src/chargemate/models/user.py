@@ -12,6 +12,7 @@ from chargemate.models.base import TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from chargemate.models.auth_session import AuthSession
+    from chargemate.models.booking import Booking
     from chargemate.models.station import ChargingStation
 
 
@@ -74,6 +75,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, db.Model):
     )
     charging_stations: Mapped[list["ChargingStation"]] = relationship(
         back_populates="owner",
+        passive_deletes=True,
+    )
+    bookings: Mapped[list["Booking"]] = relationship(
+        back_populates="user",
         passive_deletes=True,
     )
 
