@@ -44,6 +44,9 @@ class BaseConfig:
     EXTERNAL_STATION_RATE_LIMIT_REQUESTS = 30
     TRUST_PROXY_HEADERS = False
     ENABLE_HSTS = False
+    RQ_MAINTENANCE_QUEUE = "maintenance"
+    RQ_JOB_TIMEOUT_SECONDS = 60
+    MAINTENANCE_BATCH_SIZE = 100
 
 
 class DevelopmentConfig(BaseConfig):

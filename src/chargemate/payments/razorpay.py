@@ -123,6 +123,45 @@ def create_razorpay_refund(
     )
 
 
+def fetch_razorpay_refund(
+    *,
+    key_id: str,
+    key_secret: str,
+    refund_id: str,
+    payment_id: str,
+    amount_subunits: int,
+    currency: str,
+) -> RazorpayRefund:
+    """Fetch and validate the latest provider state of one refund."""
+
+    try:
+        response = httpx.get(
+            f"https://api.razorpay.com/v1/refunds/{refund_id}",
+            auth=(key_id, key_secret),
+            timeout=RAZORPAY_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, TypeError, ValueError) as error:
+        raise RazorpayRefundError from error
+
+    if not _valid_refund_payload(
+        payload,
+        payment_id,
+        amount_subunits,
+        currency,
+    ) or payload["id"] != refund_id:
+        raise RazorpayRefundError
+
+    return RazorpayRefund(
+        id=payload["id"],
+        payment_id=payload["payment_id"],
+        amount_subunits=payload["amount"],
+        currency=payload["currency"],
+        status=payload["status"],
+    )
+
+
 def _valid_order_payload(
     payload: Any,
     expected_amount_subunits: int,

@@ -2,6 +2,7 @@ from flask import Flask
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from redis import Redis
+from rq import Queue
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
@@ -37,3 +38,16 @@ def init_extensions(app: Flask) -> None:
         socket_timeout=1,
     )
     app.extensions["redis"] = redis_client
+
+    rq_redis = Redis.from_url(
+        app.config["REDIS_URL"],
+        decode_responses=False,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+    )
+    app.extensions["rq_redis"] = rq_redis
+    app.extensions["maintenance_queue"] = Queue(
+        app.config["RQ_MAINTENANCE_QUEUE"],
+        connection=rq_redis,
+        default_timeout=app.config["RQ_JOB_TIMEOUT_SECONDS"],
+    )

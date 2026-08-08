@@ -9,6 +9,7 @@ from chargemate.stations.routes import stations_blueprint
 from chargemate.config import BaseConfig, get_config
 from chargemate.extensions import init_extensions
 from chargemate.health import health_blueprint
+from chargemate.maintenance.cli import maintenance_cli
 from chargemate.security.middleware import init_security_middleware
 
 
@@ -24,4 +25,5 @@ def create_app(config: type[BaseConfig] | None = None) -> Flask:
     app.register_blueprint(payments_blueprint)
     app.register_blueprint(stations_blueprint)
     app.register_blueprint(health_blueprint)
+    app.cli.add_command(maintenance_cli)
     return app
