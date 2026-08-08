@@ -213,6 +213,7 @@ tempCodeRunnerFile.py
 node_modules/
 frontend/dist/
 frontend/.vite/
+*.tsbuildinfo
 
 # Marimo
 marimo/_static/
