@@ -78,6 +78,7 @@ h1 span {color: var(--lime);}
 .account-summary h2 {margin: 0 0 6px; font-size: 28px;}
 .account-summary p:not(.eyebrow) {margin: 0; color: var(--muted);}
 .account-summary dl {display: flex; gap: 35px; margin: 0;}
+.account-security-button {margin-top: 12px; padding: 8px 11px; color: #29453a; background: #f5faf6; border: 1px solid #bfd0c7; border-radius: 7px; font-size: 11px; font-weight: 800; cursor: pointer;}
 .account-summary dl div {display: grid; gap: 4px;}
 .account-summary dt {color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;}
 .account-summary dd {margin: 0; font-weight: 700; text-transform: capitalize;}
@@ -349,6 +350,21 @@ h1 span {color: var(--lime);}
 .meter-action button:disabled {opacity: .6; cursor: wait;}
 .operation-version {display: block; margin-top: 9px; color: #8a9891; font-size: 9px; text-align: right;}
 
+.security-backdrop {position: fixed; z-index: 1950; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(2,13,10,.8); backdrop-filter: blur(7px);}
+.security-panel {width: min(620px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; padding: 28px; color: #182a24; background: #f1f5ef; border-radius: 20px; box-shadow: 0 35px 100px rgba(0,0,0,.46);}
+.security-header {display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px;}
+.security-header .eyebrow {color: #577d14;}
+.security-header h2 {margin: 0; font-size: 34px; letter-spacing: -.04em;}
+.security-header > button {width: 38px; height: 38px; color: #42564d; background: transparent; border: 1px solid #ccd8d1; border-radius: 50%; font-size: 23px; cursor: pointer;}
+.password-form {display: grid; gap: 13px; padding: 19px; background: white; border: 1px solid #d6e0da; border-radius: 12px;}
+.password-form h3, .session-danger-zone h3 {margin: 0 0 4px; font-size: 17px;}
+.password-form p, .session-danger-zone p {margin: 0; color: #718179; font-size: 11px; line-height: 1.45;}
+.password-form label {display: grid; gap: 6px; color: #607168; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;}
+.password-form input {height: 42px; padding: 0 11px; color: #21342c; background: #f8faf8; border: 1px solid #cbd7d1; border-radius: 8px;}
+.password-form > button {height: 43px; color: #eff8f2; background: #163f33; border: 1px solid #163f33; border-radius: 8px; font-weight: 800; cursor: pointer;}
+.session-danger-zone {display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 19px; margin-top: 13px; background: #fff2ef; border: 1px solid #eccbc4; border-radius: 12px;}
+.session-danger-zone button {flex: 0 0 auto; padding: 10px 12px; color: white; background: #a84035; border: 1px solid #a84035; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer;}
+
 @media (max-width: 900px) {
   .hero {grid-template-columns: 1fr; min-height: auto; padding: 90px 0;}
   .hero-stat {display: none;}
@@ -409,4 +425,7 @@ h1 span {color: var(--lime);}
   .operations-panel {height: 100%; max-height: none; padding: 21px 16px; border-radius: 0;}
   .operation-facts {grid-template-columns: 1fr 1fr;}
   .meter-action {align-items: stretch; flex-direction: column;}
+  .security-backdrop {padding: 0;}
+  .security-panel {height: 100%; max-height: none; padding: 21px 16px; border-radius: 0;}
+  .session-danger-zone {align-items: stretch; flex-direction: column;}
 }

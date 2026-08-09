@@ -6,6 +6,7 @@ import {
 } from "./client";
 import type {
   AuthenticatedUser,
+  ChangePasswordInput,
   LoginInput,
   RegistrationInput,
   TokenResponse,
@@ -60,4 +61,29 @@ export async function logout(): Promise<void> {
     clearAuthentication();
     bootstrapPromise = null;
   }
+}
+
+export async function logoutAllDevices(): Promise<void> {
+  try {
+    await requestJson<void>("/auth/logout-all", {
+      method: "POST",
+      authenticated: true,
+      retryOnUnauthorized: false,
+    });
+  } finally {
+    clearAuthentication();
+    bootstrapPromise = null;
+  }
+}
+
+export async function changePassword(
+  input: ChangePasswordInput,
+): Promise<void> {
+  await requestJson<void>("/auth/change-password", {
+    method: "POST",
+    authenticated: true,
+    body: JSON.stringify(input),
+  });
+  clearAuthentication();
+  bootstrapPromise = null;
 }

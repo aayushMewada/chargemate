@@ -7,13 +7,16 @@ import {
   useState,
 } from "react";
 import {
+  changePassword as changePasswordRequest,
   login as loginRequest,
   logout as logoutRequest,
+  logoutAllDevices as logoutAllDevicesRequest,
   register as registerRequest,
   restoreCurrentUser,
 } from "../api/auth";
 import type {
   AuthenticatedUser,
+  ChangePasswordInput,
   LoginInput,
   RegistrationInput,
 } from "../types/auth";
@@ -26,6 +29,8 @@ type AuthContextValue = {
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegistrationInput) => Promise<void>;
   logout: () => Promise<void>;
+  logoutAllDevices: () => Promise<void>;
+  changePassword: (input: ChangePasswordInput) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -75,6 +80,19 @@ export function AuthProvider({children}: {children: ReactNode}) {
           setUser(null);
           setStatus("anonymous");
         }
+      },
+      logoutAllDevices: async () => {
+        try {
+          await logoutAllDevicesRequest();
+        } finally {
+          setUser(null);
+          setStatus("anonymous");
+        }
+      },
+      changePassword: async (input) => {
+        await changePasswordRequest(input);
+        setUser(null);
+        setStatus("anonymous");
       },
     }),
     [status, user],

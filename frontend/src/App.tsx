@@ -2,6 +2,7 @@ import {useEffect, useMemo, useState} from "react";
 import {searchExternalStations, searchManagedStations} from "./api/stations";
 import {useAuth} from "./auth/AuthContext";
 import {AuthDialog, type AuthMode} from "./components/AuthDialog";
+import {AccountSecurityPanel} from "./components/AccountSecurityPanel";
 import {BookingsPanel} from "./components/BookingsPanel";
 import {ChargingHistoryPanel} from "./components/ChargingHistoryPanel";
 import {ChargingOperationsPanel} from "./components/ChargingOperationsPanel";
@@ -22,6 +23,7 @@ export function App() {
   const [chargingHistoryOpen, setChargingHistoryOpen] = useState(false);
   const [stationAdminOpen, setStationAdminOpen] = useState(false);
   const [chargingOperationsOpen, setChargingOperationsOpen] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(false);
   const [center, setCenter] = useState<Coordinates>(INDORE);
   const [radiusKm, setRadiusKm] = useState(25);
   const [stations, setStations] = useState<StationMarker[]>([]);
@@ -221,6 +223,7 @@ export function App() {
             <p className="eyebrow">Signed in securely</p>
             <h2>{user.full_name}</h2>
             <p>{user.email} · @{user.username}</p>
+            <button className="account-security-button" type="button" onClick={() => setSecurityOpen(true)}>Security settings</button>
           </div>
           <dl>
             <div><dt>Account role</dt><dd>{user.role.replace("_", " ")}</dd></div>
@@ -341,6 +344,14 @@ export function App() {
       <ChargingOperationsPanel
         open={chargingOperationsOpen && Boolean(user)}
         onClose={() => setChargingOperationsOpen(false)}
+      />
+      <AccountSecurityPanel
+        open={securityOpen && Boolean(user)}
+        onClose={() => setSecurityOpen(false)}
+        onSignedOut={(signedOutMessage) => {
+          setSecurityOpen(false);
+          setMessage(signedOutMessage);
+        }}
       />
     </main>
   );

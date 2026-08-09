@@ -15,6 +15,11 @@ export type LoginInput = {
   password: string;
 };
 
+export type ChangePasswordInput = {
+  current_password: string;
+  new_password: string;
+};
+
 export type RegistrationInput = {
   email: string;
   username: string;
