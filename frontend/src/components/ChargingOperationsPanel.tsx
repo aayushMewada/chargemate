@@ -42,8 +42,9 @@ export function ChargingOperationsPanel({open, onClose}: {open: boolean; onClose
   async function submit(operation: ChargingOperation) {
     const session = operation.charging_session;
     const actionId = session?.id ?? operation.booking.id;
-    const reading = Number(readings[actionId]);
-    if (!Number.isFinite(reading) || reading < 0) {
+    const readingValue = readings[actionId];
+    const reading = Number(readingValue);
+    if (!readingValue?.trim() || !Number.isFinite(reading) || reading < 0) {
       setError("Enter a valid non-negative cumulative meter reading.");
       return;
     }
