@@ -34,3 +34,6 @@ jobs:
 
       - name: Build production frontend
         run: npm run build
+
+      - name: Build production frontend image
+        run: docker build --tag chargemate-web:ci .
