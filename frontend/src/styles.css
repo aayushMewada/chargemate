@@ -267,6 +267,30 @@ h1 span {color: var(--lime);}
 .admin-header h2 {margin: 0 0 4px; font-size: 36px; letter-spacing: -.04em;}
 .admin-header > div > span {color: #74857d; font-size: 13px;}
 .admin-header > button {width: 38px; height: 38px; color: #42564d; background: transparent; border: 1px solid #ccd8d1; border-radius: 50%; font-size: 23px; cursor: pointer;}
+.admin-header-actions {display: flex; align-items: center; gap: 9px;}
+.admin-header-actions .add-station-button {height: 38px; padding: 0 14px; color: #eff8f2; background: #153d32; border: 1px solid #153d32; border-radius: 8px; font-weight: 800; cursor: pointer;}
+.admin-header-actions .admin-close-button {width: 38px; height: 38px; color: #42564d; background: transparent; border: 1px solid #ccd8d1; border-radius: 50%; font-size: 23px; cursor: pointer;}
+.station-create-form {display: grid; gap: 18px; padding: 21px; margin-bottom: 18px; background: #fff; border: 1px solid #cfe0d7; border-radius: 14px; box-shadow: 0 12px 30px rgba(23,54,44,.08);}
+.station-form-heading {display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;}
+.station-form-heading h3 {margin: 4px 0 0; font-size: 23px;}
+.station-form-heading > span {padding: 6px 9px; color: #5c711d; background: #eef7dc; border-radius: 999px; font-size: 9px; font-weight: 800; text-transform: uppercase;}
+.station-form-grid {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;}
+.station-form-grid label, .connector-form-list label {display: grid; gap: 6px; color: #617169; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;}
+.station-form-grid input, .station-form-grid textarea, .connector-form-list input, .connector-form-list select {width: 100%; min-width: 0; height: 40px; padding: 0 10px; color: #21342c; background: #f8faf8; border: 1px solid #cbd7d1; border-radius: 7px; font: 500 12px "Manrope";}
+.station-form-grid textarea {height: 70px; padding-top: 9px; resize: vertical;}
+.station-form-wide {grid-column: 1 / -1;}
+.station-form-grid label.station-check, .connector-form-list label.station-check {display: flex; align-items: center; align-self: end; height: 40px; gap: 8px; color: #40544b; font-size: 10px;}
+.station-check input {width: 16px; height: 16px; accent-color: #77a422;}
+.connector-form-heading {display: flex; align-items: center; justify-content: space-between; gap: 15px; padding-top: 4px; border-top: 1px solid #e3e9e6;}
+.connector-form-heading h4 {margin: 14px 0 3px; font-size: 15px;}
+.connector-form-heading span {color: #7a8982; font-size: 10px;}
+.connector-form-heading button {padding: 8px 10px; color: #31570c; background: #eef7dd; border: 1px solid #c5df9d; border-radius: 7px; font-size: 10px; font-weight: 800; cursor: pointer;}
+.connector-form-list {display: grid; gap: 9px;}
+.connector-form-list fieldset {display: grid; grid-template-columns: 1fr 1.2fr .7fr .8fr .8fr .7fr auto; align-items: end; gap: 9px; padding: 12px; background: #f3f7f3; border: 1px solid #dbe5df; border-radius: 9px;}
+.connector-form-list legend {padding: 0 5px; color: #62736a; font-size: 9px; font-weight: 800; text-transform: uppercase;}
+.remove-connector {height: 40px; padding: 0 9px; color: #8a3c33; background: #fff0ed; border: 1px solid #efc8c1; border-radius: 7px; font-size: 10px; font-weight: 800; cursor: pointer;}
+.create-station-submit {height: 45px; color: #14251e; background: var(--lime); border: 1px solid #afd853; border-radius: 8px; font-weight: 800; cursor: pointer;}
+.create-station-submit:disabled {opacity: .6; cursor: wait;}
 .admin-station-list {display: grid; gap: 14px;}
 .admin-station-card {padding: 20px; background: white; border: 1px solid #d6e0da; border-radius: 14px;}
 .admin-station-heading {display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;}
@@ -361,6 +385,12 @@ h1 span {color: var(--lime);}
   .admin-station-heading label {width: 100%;}
   .admin-point-row {grid-template-columns: 1fr 1fr;}
   .admin-point-row > div {grid-column: 1 / -1;}
+  .admin-header {align-items: stretch; flex-direction: column;}
+  .admin-header-actions {justify-content: space-between;}
+  .station-form-grid {grid-template-columns: 1fr;}
+  .station-form-wide {grid-column: auto;}
+  .connector-form-list fieldset {grid-template-columns: 1fr 1fr;}
+  .connector-form-list fieldset label:first-of-type {grid-column: 1 / -1;}
   .operations-backdrop {padding: 0;}
   .operations-panel {height: 100%; max-height: none; padding: 21px 16px; border-radius: 0;}
   .operation-facts {grid-template-columns: 1fr 1fr;}

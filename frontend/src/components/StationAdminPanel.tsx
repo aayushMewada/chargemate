@@ -1,5 +1,6 @@
-import {useCallback, useEffect, useState} from "react";
+import {type FormEvent, useCallback, useEffect, useState} from "react";
 import {
+  createOwnedStation,
   listOwnedStations,
   type ChargePointStatus,
   type StationStatus,
@@ -7,7 +8,12 @@ import {
   updateOwnedStationStatus,
 } from "../api/stations";
 import {ApiError} from "../api/client";
-import type {ChargePoint, ManagedStation} from "../types/station";
+import type {
+  ChargePoint,
+  ConnectorType,
+  ManagedStation,
+  StationCreateInput,
+} from "../types/station";
 
 const STATION_STATUSES: StationStatus[] = [
   "draft",
@@ -21,6 +27,39 @@ const CHARGE_POINT_STATUSES: ChargePointStatus[] = [
   "maintenance",
   "retired",
 ];
+const CONNECTOR_TYPES: ConnectorType[] = [
+  "ccs_2",
+  "type_2",
+  "chademo",
+  "gb_t",
+  "bharat_dc_001",
+];
+
+type ConnectorDraft = {
+  code: string;
+  connector_type: ConnectorType;
+  power_type: "ac" | "dc";
+  max_power_kw: string;
+  booking_fee: string;
+  is_bookable: boolean;
+};
+
+type StationDraft = {
+  name: string;
+  description: string;
+  address_line_1: string;
+  address_line_2: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country_code: string;
+  latitude: string;
+  longitude: string;
+  timezone: string;
+  phone: string;
+  is_24_hours: boolean;
+  charge_points: ConnectorDraft[];
+};
 
 export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () => void}) {
   const [stations, setStations] = useState<ManagedStation[]>([]);
@@ -31,6 +70,9 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState<StationDraft>(newStationDraft);
 
   const loadStations = useCallback(async () => {
     setLoading(true);
@@ -52,6 +94,60 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
   }, [loadStations, open]);
 
   if (!open) return null;
+
+  async function createStation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreating(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const input: StationCreateInput = {
+        name: draft.name,
+        description: optional(draft.description),
+        address_line_1: draft.address_line_1,
+        address_line_2: optional(draft.address_line_2),
+        city: draft.city,
+        state: draft.state,
+        postal_code: draft.postal_code,
+        country_code: draft.country_code,
+        latitude: requiredNumber(draft.latitude, "latitude"),
+        longitude: requiredNumber(draft.longitude, "longitude"),
+        timezone: draft.timezone,
+        phone: optional(draft.phone),
+        is_24_hours: draft.is_24_hours,
+        charge_points: draft.charge_points.map((point) => ({
+          code: point.code,
+          connector_type: point.connector_type,
+          power_type: point.power_type,
+          max_power_kw: requiredNumber(point.max_power_kw, "maximum power"),
+          booking_fee: requiredNumber(point.booking_fee, "booking fee"),
+          is_bookable: point.is_bookable,
+        })),
+      };
+      const created = await createOwnedStation(input);
+      const result = await listOwnedStations(1);
+      setStations(result.stations);
+      setPage(1);
+      setPages(Math.max(result.pagination.pages, 1));
+      setTotal(result.pagination.total);
+      setDraft(newStationDraft());
+      setCreateOpen(false);
+      setNotice(`${created.name} was created as a draft station.`);
+    } catch (caught) {
+      setError(apiMessage(caught, "The station could not be created."));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function updateConnector(index: number, changes: Partial<ConnectorDraft>) {
+    setDraft((current) => ({
+      ...current,
+      charge_points: current.charge_points.map((point, pointIndex) =>
+        pointIndex === index ? {...point, ...changes} : point,
+      ),
+    }));
+  }
 
   async function changeStationStatus(station: ManagedStation, status: StationStatus) {
     const key = `station-${station.id}`;
@@ -117,11 +213,68 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
             <h2 id="admin-title">Station dashboard</h2>
             <span>{total} managed station{total === 1 ? "" : "s"}</span>
           </div>
-          <button type="button" onClick={onClose} disabled={Boolean(savingKey)} aria-label="Close station dashboard">×</button>
+          <div className="admin-header-actions">
+            <button
+              className="add-station-button"
+              type="button"
+              onClick={() => setCreateOpen((value) => !value)}
+              disabled={creating}
+            >
+              {createOpen ? "Cancel setup" : "Add station"}
+            </button>
+            <button className="admin-close-button" type="button" onClick={onClose} disabled={Boolean(savingKey) || creating} aria-label="Close station dashboard">×</button>
+          </div>
         </div>
 
         {notice && <div className="dashboard-notice" role="status">{notice}</div>}
         {error && <div className="form-error" role="alert"><strong>{error}</strong></div>}
+
+        {createOpen && (
+          <form className="station-create-form" onSubmit={(event) => void createStation(event)}>
+            <div className="station-form-heading">
+              <div><p className="eyebrow">New location</p><h3>Create a station</h3></div>
+              <span>It starts in draft status</span>
+            </div>
+
+            <div className="station-form-grid">
+              <label>Station name<input required minLength={2} maxLength={120} value={draft.name} onChange={(event) => setDraft({...draft, name: event.target.value})} /></label>
+              <label>Phone (optional)<input maxLength={20} value={draft.phone} onChange={(event) => setDraft({...draft, phone: event.target.value})} /></label>
+              <label className="station-form-wide">Description (optional)<textarea maxLength={2000} value={draft.description} onChange={(event) => setDraft({...draft, description: event.target.value})} /></label>
+              <label className="station-form-wide">Address line 1<input required minLength={3} maxLength={255} value={draft.address_line_1} onChange={(event) => setDraft({...draft, address_line_1: event.target.value})} /></label>
+              <label className="station-form-wide">Address line 2 (optional)<input maxLength={255} value={draft.address_line_2} onChange={(event) => setDraft({...draft, address_line_2: event.target.value})} /></label>
+              <label>City<input required minLength={2} value={draft.city} onChange={(event) => setDraft({...draft, city: event.target.value})} /></label>
+              <label>State<input required minLength={2} value={draft.state} onChange={(event) => setDraft({...draft, state: event.target.value})} /></label>
+              <label>Postal code<input required minLength={3} value={draft.postal_code} onChange={(event) => setDraft({...draft, postal_code: event.target.value})} /></label>
+              <label>Country code<input required minLength={2} maxLength={2} value={draft.country_code} onChange={(event) => setDraft({...draft, country_code: event.target.value.toUpperCase()})} /></label>
+              <label>Latitude<input required type="number" min="-90" max="90" step="0.000001" value={draft.latitude} onChange={(event) => setDraft({...draft, latitude: event.target.value})} /></label>
+              <label>Longitude<input required type="number" min="-180" max="180" step="0.000001" value={draft.longitude} onChange={(event) => setDraft({...draft, longitude: event.target.value})} /></label>
+              <label>Timezone<input required value={draft.timezone} onChange={(event) => setDraft({...draft, timezone: event.target.value})} /></label>
+              <label className="station-check"><input type="checkbox" checked={draft.is_24_hours} onChange={(event) => setDraft({...draft, is_24_hours: event.target.checked})} /> Open 24 hours</label>
+            </div>
+
+            <div className="connector-form-heading">
+              <div><h4>Initial connectors</h4><span>At least one connector is required.</span></div>
+              <button type="button" onClick={() => setDraft((current) => ({...current, charge_points: [...current.charge_points, newConnectorDraft()]}))}>Add connector</button>
+            </div>
+
+            <div className="connector-form-list">
+              {draft.charge_points.map((point, index) => (
+                <fieldset key={index}>
+                  <legend>Connector {index + 1}</legend>
+                  <label>Code<input required maxLength={50} value={point.code} onChange={(event) => updateConnector(index, {code: event.target.value.toUpperCase()})} /></label>
+                  <label>Connector type<select value={point.connector_type} onChange={(event) => updateConnector(index, {connector_type: event.target.value as ConnectorType})}>{CONNECTOR_TYPES.map((type) => <option key={type} value={type}>{readable(type)}</option>)}</select></label>
+                  <label>Power type<select value={point.power_type} onChange={(event) => updateConnector(index, {power_type: event.target.value as "ac" | "dc"})}><option value="dc">DC</option><option value="ac">AC</option></select></label>
+                  <label>Maximum kW<input required type="number" min="0.01" step="0.01" value={point.max_power_kw} onChange={(event) => updateConnector(index, {max_power_kw: event.target.value})} /></label>
+                  <label>Booking fee (₹)<input required type="number" min="0" step="0.01" value={point.booking_fee} onChange={(event) => updateConnector(index, {booking_fee: event.target.value})} /></label>
+                  <label className="station-check"><input type="checkbox" checked={point.is_bookable} onChange={(event) => updateConnector(index, {is_bookable: event.target.checked})} /> Bookable</label>
+                  {draft.charge_points.length > 1 && <button className="remove-connector" type="button" onClick={() => setDraft((current) => ({...current, charge_points: current.charge_points.filter((_, pointIndex) => pointIndex !== index)}))}>Remove</button>}
+                </fieldset>
+              ))}
+            </div>
+
+            <button className="create-station-submit" type="submit" disabled={creating}>{creating ? "Creating station..." : "Create station and connectors"}</button>
+          </form>
+        )}
 
         <div className="admin-station-list">
           {loading ? (
@@ -129,7 +282,7 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
           ) : stations.length === 0 ? (
             <div className="dashboard-empty">
               <strong>No stations assigned</strong>
-              <span>Create a station through the operator API to manage it here.</span>
+              <span>Use Add station to create your first charging location.</span>
             </div>
           ) : stations.map((station) => (
             <article className="admin-station-card" key={station.id}>
@@ -210,5 +363,47 @@ function readable(value: string): string {
 }
 
 function apiMessage(caught: unknown, fallback: string): string {
-  return caught instanceof ApiError ? caught.message : fallback;
+  if (caught instanceof ApiError) return caught.message;
+  return caught instanceof Error ? caught.message : fallback;
+}
+
+function optional(value: string): string | null {
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+function requiredNumber(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error(`Enter a valid ${label}.`);
+  return parsed;
+}
+
+function newConnectorDraft(): ConnectorDraft {
+  return {
+    code: "",
+    connector_type: "ccs_2",
+    power_type: "dc",
+    max_power_kw: "60",
+    booking_fee: "50",
+    is_bookable: true,
+  };
+}
+
+function newStationDraft(): StationDraft {
+  return {
+    name: "",
+    description: "",
+    address_line_1: "",
+    address_line_2: "",
+    city: "Indore",
+    state: "Madhya Pradesh",
+    postal_code: "",
+    country_code: "IN",
+    latitude: "22.719600",
+    longitude: "75.857700",
+    timezone: "Asia/Kolkata",
+    phone: "",
+    is_24_hours: false,
+    charge_points: [newConnectorDraft()],
+  };
 }

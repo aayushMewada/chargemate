@@ -10,6 +10,7 @@ import type {
   ManagedStationResponse,
   OwnedStationResponse,
   StationMarker,
+  StationCreateInput,
 } from "../types/station";
 
 export type StationStatus = "draft" | "active" | "inactive" | "maintenance";
@@ -65,6 +66,17 @@ export function listOwnedStations(page = 1): Promise<OwnedStationResponse> {
   return requestJson<OwnedStationResponse>(`/stations/mine?${query.toString()}`, {
     authenticated: true,
   });
+}
+
+export async function createOwnedStation(
+  input: StationCreateInput,
+): Promise<ManagedStation> {
+  const response = await requestJson<ManagedStationDetailResponse>("/stations", {
+    method: "POST",
+    authenticated: true,
+    body: JSON.stringify(input),
+  });
+  return response.station;
 }
 
 export async function updateOwnedStationStatus(

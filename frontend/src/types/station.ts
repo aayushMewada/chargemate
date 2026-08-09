@@ -91,6 +91,35 @@ export type ChargePointUpdateResponse = {
   charge_point: ChargePoint;
 };
 
+export type ConnectorType =
+  | "ccs_2"
+  | "type_2"
+  | "chademo"
+  | "gb_t"
+  | "bharat_dc_001";
+
+export type StationCreateInput = Coordinates & {
+  name: string;
+  description: string | null;
+  address_line_1: string;
+  address_line_2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  country_code: string;
+  timezone: string;
+  phone: string | null;
+  is_24_hours: boolean;
+  charge_points: Array<{
+    code: string;
+    connector_type: ConnectorType;
+    power_type: "ac" | "dc";
+    max_power_kw: number;
+    booking_fee: number;
+    is_bookable: boolean;
+  }>;
+};
+
 export type ExternalStationResponse = {
   stations: ExternalStation[];
   source: "open_charge_map";
