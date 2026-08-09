@@ -118,6 +118,11 @@ def test_confirmed_booking_starts_charging_session(client, app):
     assert body["status"] == "active"
     assert body["meter_start_kwh"] == 1000.125
     assert body["version"] == 1
+    assert body["charge_point"]["code"] == "CP-SESSION-01"
+    assert body["charge_point"]["station"]["name"] == (
+        "Charging Session Test Station"
+    )
+    assert body["booking_window"]["starts_at"] is not None
     with app.app_context():
         stored_booking = db.session.get(Booking, booking.id)
         assert stored_booking.status == BookingStatus.ACTIVE

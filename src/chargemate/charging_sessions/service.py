@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from chargemate.charging_sessions.schemas import (
     ChargingSessionListQuery,
@@ -195,6 +196,12 @@ def find_user_charging_sessions(
     )
     sessions = db.session.scalars(
         select(ChargingSession)
+        .options(
+            joinedload(ChargingSession.booking),
+            joinedload(ChargingSession.charge_point).joinedload(
+                ChargePoint.station
+            ),
+        )
         .where(*filters)
         .order_by(ChargingSession.started_at.desc(), ChargingSession.id)
         .offset((query.page - 1) * query.per_page)
@@ -215,7 +222,14 @@ def get_user_charging_session(
     """Return one charging session only when the user owns it."""
 
     return db.session.scalar(
-        select(ChargingSession).where(
+        select(ChargingSession)
+        .options(
+            joinedload(ChargingSession.booking),
+            joinedload(ChargingSession.charge_point).joinedload(
+                ChargePoint.station
+            ),
+        )
+        .where(
             ChargingSession.id == session_id,
             ChargingSession.user_id == user_id,
         )

@@ -129,6 +129,23 @@ def _serialize_session(charging_session: ChargingSession) -> dict:
         "id": str(charging_session.id),
         "booking_id": str(charging_session.booking_id),
         "charge_point_id": str(charging_session.charge_point_id),
+        "charge_point": {
+            "id": str(charging_session.charge_point.id),
+            "code": charging_session.charge_point.code,
+            "connector_type": charging_session.charge_point.connector_type.value,
+            "power_type": charging_session.charge_point.power_type.value,
+            "max_power_kw": float(charging_session.charge_point.max_power_kw),
+            "station": {
+                "id": str(charging_session.charge_point.station.id),
+                "name": charging_session.charge_point.station.name,
+                "city": charging_session.charge_point.station.city,
+                "state": charging_session.charge_point.station.state,
+            },
+        },
+        "booking_window": {
+            "starts_at": charging_session.booking.starts_at.isoformat(),
+            "ends_at": charging_session.booking.ends_at.isoformat(),
+        },
         "status": charging_session.status.value,
         "started_at": charging_session.started_at.isoformat(),
         "ended_at": (
@@ -148,6 +165,7 @@ def _serialize_session(charging_session: ChargingSession) -> dict:
             else None
         ),
         "version": charging_session.version,
+        "created_at": charging_session.created_at.isoformat(),
     }
 
 
