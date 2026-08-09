@@ -1,13 +1,23 @@
-import {getJson} from "./client";
+import {getJson, requestJson} from "./client";
 import type {
+  ChargePoint,
+  ChargePointUpdateResponse,
   Coordinates,
   ExternalStation,
   ExternalStationResponse,
   ManagedStation,
   ManagedStationDetailResponse,
   ManagedStationResponse,
+  OwnedStationResponse,
   StationMarker,
 } from "../types/station";
+
+export type StationStatus = "draft" | "active" | "inactive" | "maintenance";
+export type ChargePointStatus =
+  | "available"
+  | "out_of_service"
+  | "maintenance"
+  | "retired";
 
 export type StationSearch = Coordinates & {
   radiusKm: number;
@@ -48,6 +58,46 @@ export async function getManagedStation(
     signal,
   );
   return response.station;
+}
+
+export function listOwnedStations(page = 1): Promise<OwnedStationResponse> {
+  const query = new URLSearchParams({page: String(page), per_page: "20"});
+  return requestJson<OwnedStationResponse>(`/stations/mine?${query.toString()}`, {
+    authenticated: true,
+  });
+}
+
+export async function updateOwnedStationStatus(
+  stationId: string,
+  version: number,
+  status: StationStatus,
+): Promise<ManagedStation> {
+  const response = await requestJson<ManagedStationDetailResponse>(
+    `/stations/${stationId}`,
+    {
+      method: "PATCH",
+      authenticated: true,
+      body: JSON.stringify({version, status}),
+    },
+  );
+  return response.station;
+}
+
+export async function updateOwnedChargePoint(
+  stationId: string,
+  chargePointId: string,
+  version: number,
+  changes: {status?: ChargePointStatus; is_bookable?: boolean},
+): Promise<ChargePoint> {
+  const response = await requestJson<ChargePointUpdateResponse>(
+    `/stations/${stationId}/charge-points/${chargePointId}`,
+    {
+      method: "PATCH",
+      authenticated: true,
+      body: JSON.stringify({version, ...changes}),
+    },
+  );
+  return response.charge_point;
 }
 
 function stationQuery(search: StationSearch): URLSearchParams {

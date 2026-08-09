@@ -17,15 +17,23 @@ export type ChargePoint = {
 
 export type ManagedStation = Coordinates & {
   id: string;
+  owner_id: string;
   name: string;
+  description: string | null;
   address_line_1: string;
+  address_line_2: string | null;
   city: string;
   state: string;
   postal_code: string;
+  country_code: string;
+  timezone: string;
+  phone: string | null;
   status: string;
   is_24_hours: boolean;
+  version: number;
   distance_km?: number;
   charge_points: ChargePoint[];
+  created_at: string;
 };
 
 export type ExternalStation = Coordinates & {
@@ -75,6 +83,12 @@ export type ManagedStationResponse = {
 
 export type ManagedStationDetailResponse = {
   station: ManagedStation;
+};
+
+export type OwnedStationResponse = ManagedStationResponse;
+
+export type ChargePointUpdateResponse = {
+  charge_point: ChargePoint;
 };
 
 export type ExternalStationResponse = {

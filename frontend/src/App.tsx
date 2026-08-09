@@ -6,6 +6,7 @@ import {BookingsPanel} from "./components/BookingsPanel";
 import {ChargingHistoryPanel} from "./components/ChargingHistoryPanel";
 import {StationCard} from "./components/StationCard";
 import {StationDetailsPanel} from "./components/StationDetailsPanel";
+import {StationAdminPanel} from "./components/StationAdminPanel";
 import {StationMap} from "./components/StationMap";
 import type {Coordinates, StationMarker} from "./types/station";
 
@@ -18,6 +19,7 @@ export function App() {
   const [detailsStation, setDetailsStation] = useState<StationMarker | null>(null);
   const [bookingsOpen, setBookingsOpen] = useState(false);
   const [chargingHistoryOpen, setChargingHistoryOpen] = useState(false);
+  const [stationAdminOpen, setStationAdminOpen] = useState(false);
   const [center, setCenter] = useState<Coordinates>(INDORE);
   const [radiusKm, setRadiusKm] = useState(25);
   const [stations, setStations] = useState<StationMarker[]>([]);
@@ -132,6 +134,15 @@ export function App() {
               >
                 Charging history
               </button>
+              {(user.role === "station_admin" || user.role === "system_admin") && (
+                <button
+                  className="nav-link-button"
+                  type="button"
+                  onClick={() => setStationAdminOpen(true)}
+                >
+                  Manage stations
+                </button>
+              )}
               <a className="user-pill" href="#account" title={user.email}>
                 <span>{user.full_name.charAt(0).toUpperCase()}</span>
                 {user.full_name}
@@ -311,6 +322,10 @@ export function App() {
       <ChargingHistoryPanel
         open={chargingHistoryOpen && Boolean(user)}
         onClose={() => setChargingHistoryOpen(false)}
+      />
+      <StationAdminPanel
+        open={stationAdminOpen && Boolean(user)}
+        onClose={() => setStationAdminOpen(false)}
       />
     </main>
   );
