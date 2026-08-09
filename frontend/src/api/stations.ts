@@ -146,8 +146,10 @@ export async function updateOwnedChargePoint(
 
 function stationQuery(search: StationSearch): URLSearchParams {
   return new URLSearchParams({
-    latitude: String(search.latitude),
-    longitude: String(search.longitude),
+    // Browser geolocation commonly returns 12-15 decimal places, while the
+    // API and PostgreSQL station coordinates use six-decimal precision.
+    latitude: search.latitude.toFixed(6),
+    longitude: search.longitude.toFixed(6),
     radius_km: String(search.radiusKm),
   });
 }
