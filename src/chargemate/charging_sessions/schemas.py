@@ -33,3 +33,13 @@ class ChargingSessionListQuery(BaseModel):
     status: ChargingSessionStatus | None = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=20, ge=1, le=100)
+
+
+class ChargingOperationListQuery(BaseModel):
+    """Pagination and optional station filter for an operator queue."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    station_id: UUID | None = None
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=20, ge=1, le=100)

@@ -268,3 +268,45 @@ def test_user_can_list_only_their_own_charging_sessions(client, app):
     assert other_list.status_code == 200
     assert other_list.get_json()["pagination"]["total"] == 0
     assert other_detail.status_code == 404
+
+
+def test_operator_queue_contains_only_controlled_station_bookings(client, app):
+    owner, owner_token = _register_and_login(client, app, "queue_owner")
+    booking = _create_confirmed_booking(app, owner["id"])
+    _, other_token = _register_and_login(client, app, "queue_other")
+
+    owner_response = client.get(
+        "/charging-sessions/operations",
+        headers=_authorization(owner_token),
+    )
+    other_response = client.get(
+        "/charging-sessions/operations",
+        headers=_authorization(other_token),
+    )
+
+    assert owner_response.status_code == 200
+    operation = owner_response.get_json()["operations"][0]
+    assert operation["booking"]["id"] == str(booking.id)
+    assert operation["booking"]["status"] == "confirmed"
+    assert operation["customer"]["email"] == owner["email"]
+    assert operation["charging_session"] is None
+    assert other_response.status_code == 200
+    assert other_response.get_json()["pagination"]["total"] == 0
+
+
+def test_operator_queue_includes_meter_data_after_session_starts(client, app):
+    owner, token = _register_and_login(client, app, "active_queue_owner")
+    booking = _create_confirmed_booking(app, owner["id"])
+    started = _start_session(client, token, booking)
+
+    response = client.get(
+        "/charging-sessions/operations",
+        headers=_authorization(token),
+    )
+
+    assert started.status_code == 201
+    assert response.status_code == 200
+    operation = response.get_json()["operations"][0]
+    assert operation["booking"]["status"] == "active"
+    assert operation["charging_session"]["status"] == "active"
+    assert operation["charging_session"]["meter_start_kwh"] == 1000.125

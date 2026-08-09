@@ -2,11 +2,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from chargemate.charging_sessions.schemas import (
+    ChargingOperationListQuery,
     ChargingSessionListQuery,
     CompleteChargingSessionRequest,
     StartChargingSessionRequest,
@@ -19,6 +20,7 @@ from chargemate.models.charging_session import (
     ChargingSessionStatus,
 )
 from chargemate.models.user import User, UserRole
+from chargemate.models.station import ChargingStation
 
 
 EARLY_START_MINUTES = 15
@@ -45,6 +47,16 @@ class ChargingSessionPage:
     """One page of a user's charging sessions and pagination metadata."""
 
     items: list[ChargingSession]
+    total: int
+    page: int
+    per_page: int
+
+
+@dataclass(frozen=True)
+class ChargingOperationPage:
+    """One page of bookings an operator can start or complete."""
+
+    items: list[Booking]
     total: int
     page: int
     per_page: int
@@ -209,6 +221,54 @@ def find_user_charging_sessions(
     ).all()
     return ChargingSessionPage(
         items=list(sessions),
+        total=total or 0,
+        page=query.page,
+        per_page=query.per_page,
+    )
+
+
+def find_operator_charging_operations(
+    operator: User,
+    query: ChargingOperationListQuery,
+) -> ChargingOperationPage:
+    """Return actionable bookings only for stations controlled by an operator."""
+
+    now = datetime.now(UTC)
+    filters = [
+        or_(
+            Booking.status == BookingStatus.ACTIVE,
+            and_(
+                Booking.status == BookingStatus.CONFIRMED,
+                Booking.ends_at > now,
+            ),
+        )
+    ]
+    if operator.role != UserRole.SYSTEM_ADMIN:
+        filters.append(ChargingStation.owner_id == operator.id)
+    if query.station_id is not None:
+        filters.append(ChargingStation.id == query.station_id)
+
+    base_query = (
+        select(Booking)
+        .join(Booking.charge_point)
+        .join(ChargePoint.station)
+        .where(*filters)
+    )
+    total = db.session.scalar(
+        select(func.count()).select_from(base_query.subquery())
+    )
+    bookings = db.session.scalars(
+        base_query.options(
+            joinedload(Booking.user),
+            joinedload(Booking.charge_point).joinedload(ChargePoint.station),
+            joinedload(Booking.charging_session),
+        )
+        .order_by(Booking.starts_at, Booking.id)
+        .offset((query.page - 1) * query.per_page)
+        .limit(query.per_page)
+    ).all()
+    return ChargingOperationPage(
+        items=list(bookings),
         total=total or 0,
         page=query.page,
         per_page=query.per_page,

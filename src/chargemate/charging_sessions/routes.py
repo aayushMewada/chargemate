@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from chargemate.auth.decorators import access_token_required, roles_required
 from chargemate.charging_sessions.schemas import (
+    ChargingOperationListQuery,
     ChargingSessionListQuery,
     CompleteChargingSessionRequest,
     StartChargingSessionRequest,
@@ -13,10 +14,12 @@ from chargemate.charging_sessions.service import (
     ChargingSessionStateConflictError,
     ChargingSessionTimeError,
     complete_charging_session,
+    find_operator_charging_operations,
     find_user_charging_sessions,
     get_user_charging_session,
     start_charging_session,
 )
+from chargemate.models.booking import Booking
 from chargemate.models.charging_session import ChargingSession
 from chargemate.models.user import UserRole
 
@@ -26,6 +29,28 @@ charging_sessions_blueprint = Blueprint(
     __name__,
     url_prefix="/charging-sessions",
 )
+
+
+@charging_sessions_blueprint.get("/operations")
+@roles_required(UserRole.STATION_ADMIN, UserRole.SYSTEM_ADMIN)
+def list_operator_operations():
+    """Return bookings the operator can start or complete."""
+
+    try:
+        query = ChargingOperationListQuery.model_validate(request.args)
+    except ValidationError as error:
+        return _validation_error_response(error)
+
+    page = find_operator_charging_operations(g.current_user, query)
+    return {
+        "operations": [_serialize_operation(booking) for booking in page.items],
+        "pagination": {
+            "page": page.page,
+            "per_page": page.per_page,
+            "total": page.total,
+            "pages": (page.total + page.per_page - 1) // page.per_page,
+        },
+    }, 200
 
 
 @charging_sessions_blueprint.post("")
@@ -166,6 +191,47 @@ def _serialize_session(charging_session: ChargingSession) -> dict:
         ),
         "version": charging_session.version,
         "created_at": charging_session.created_at.isoformat(),
+    }
+
+
+def _serialize_operation(booking: Booking) -> dict:
+    charging_session = booking.charging_session
+    return {
+        "booking": {
+            "id": str(booking.id),
+            "status": booking.status.value,
+            "version": booking.version,
+            "starts_at": booking.starts_at.isoformat(),
+            "ends_at": booking.ends_at.isoformat(),
+        },
+        "customer": {
+            "id": str(booking.user.id),
+            "full_name": booking.user.full_name,
+            "email": booking.user.email,
+        },
+        "charge_point": {
+            "id": str(booking.charge_point.id),
+            "code": booking.charge_point.code,
+            "connector_type": booking.charge_point.connector_type.value,
+            "max_power_kw": float(booking.charge_point.max_power_kw),
+        },
+        "station": {
+            "id": str(booking.charge_point.station.id),
+            "name": booking.charge_point.station.name,
+            "city": booking.charge_point.station.city,
+            "state": booking.charge_point.station.state,
+        },
+        "charging_session": (
+            {
+                "id": str(charging_session.id),
+                "status": charging_session.status.value,
+                "version": charging_session.version,
+                "started_at": charging_session.started_at.isoformat(),
+                "meter_start_kwh": float(charging_session.meter_start_kwh),
+            }
+            if charging_session is not None
+            else None
+        ),
     }
 
 
