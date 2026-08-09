@@ -3,6 +3,7 @@ import {searchExternalStations, searchManagedStations} from "./api/stations";
 import {useAuth} from "./auth/AuthContext";
 import {AuthDialog, type AuthMode} from "./components/AuthDialog";
 import {BookingsPanel} from "./components/BookingsPanel";
+import {ChargingHistoryPanel} from "./components/ChargingHistoryPanel";
 import {StationCard} from "./components/StationCard";
 import {StationDetailsPanel} from "./components/StationDetailsPanel";
 import {StationMap} from "./components/StationMap";
@@ -16,6 +17,7 @@ export function App() {
   const [authDialogMode, setAuthDialogMode] = useState<AuthMode | null>(null);
   const [detailsStation, setDetailsStation] = useState<StationMarker | null>(null);
   const [bookingsOpen, setBookingsOpen] = useState(false);
+  const [chargingHistoryOpen, setChargingHistoryOpen] = useState(false);
   const [center, setCenter] = useState<Coordinates>(INDORE);
   const [radiusKm, setRadiusKm] = useState(25);
   const [stations, setStations] = useState<StationMarker[]>([]);
@@ -122,6 +124,13 @@ export function App() {
                 onClick={() => setBookingsOpen(true)}
               >
                 My bookings
+              </button>
+              <button
+                className="nav-link-button"
+                type="button"
+                onClick={() => setChargingHistoryOpen(true)}
+              >
+                Charging history
               </button>
               <a className="user-pill" href="#account" title={user.email}>
                 <span>{user.full_name.charAt(0).toUpperCase()}</span>
@@ -298,6 +307,10 @@ export function App() {
       <BookingsPanel
         open={bookingsOpen && Boolean(user)}
         onClose={() => setBookingsOpen(false)}
+      />
+      <ChargingHistoryPanel
+        open={chargingHistoryOpen && Boolean(user)}
+        onClose={() => setChargingHistoryOpen(false)}
       />
     </main>
   );
