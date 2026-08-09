@@ -35,5 +35,11 @@ jobs:
       - name: Build production frontend
         run: npm run build
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npm run test:e2e
+
       - name: Build production frontend image
         run: docker build --tag chargemate-web:ci .

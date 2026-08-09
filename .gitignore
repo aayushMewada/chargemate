@@ -213,6 +213,8 @@ tempCodeRunnerFile.py
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/playwright-report/
+frontend/test-results/
 *.tsbuildinfo
 
 # Marimo
