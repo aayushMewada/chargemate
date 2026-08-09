@@ -2,9 +2,12 @@ import {type FormEvent, useCallback, useEffect, useState} from "react";
 import {
   createOwnedStation,
   listOwnedStations,
+  type ChargePointUpdateChanges,
   type ChargePointStatus,
   type StationStatus,
+  type StationUpdateChanges,
   updateOwnedChargePoint,
+  updateOwnedStation,
   updateOwnedStationStatus,
 } from "../api/stations";
 import {ApiError} from "../api/client";
@@ -73,6 +76,8 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<StationDraft>(newStationDraft);
+  const [editingStationId, setEditingStationId] = useState<string | null>(null);
+  const [editingPointId, setEditingPointId] = useState<string | null>(null);
 
   const loadStations = useCallback(async () => {
     setLoading(true);
@@ -168,8 +173,8 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
   async function changeChargePoint(
     station: ManagedStation,
     chargePoint: ChargePoint,
-    changes: {status?: ChargePointStatus; is_bookable?: boolean},
-  ) {
+    changes: ChargePointUpdateChanges,
+  ): Promise<boolean> {
     const key = `point-${chargePoint.id}`;
     setSavingKey(key);
     setError(null);
@@ -186,6 +191,28 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
         charge_points: item.charge_points.map((point) => point.id === updated.id ? updated : point),
       }));
       setNotice(`${updated.code} was updated successfully.`);
+      return true;
+    } catch (caught) {
+      await handleMutationError(caught);
+      return false;
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function saveStationDetails(
+    station: ManagedStation,
+    changes: StationUpdateChanges,
+  ) {
+    const key = `station-${station.id}`;
+    setSavingKey(key);
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await updateOwnedStation(station.id, station.version, changes);
+      setStations((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setEditingStationId(null);
+      setNotice(`${updated.name}'s details were updated.`);
     } catch (caught) {
       await handleMutationError(caught);
     } finally {
@@ -193,10 +220,20 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
     }
   }
 
+  async function saveChargePointDetails(
+    station: ManagedStation,
+    point: ChargePoint,
+    changes: ChargePointUpdateChanges,
+  ) {
+    if (await changeChargePoint(station, point, changes)) {
+      setEditingPointId(null);
+    }
+  }
+
   async function handleMutationError(caught: unknown) {
     if (caught instanceof ApiError && caught.code === "station_state_conflict") {
-      setError("This resource changed or an operational rule blocked the update. Fresh data has been loaded.");
       await loadStations();
+      setError("This resource changed or an operational rule blocked the update. Fresh data has been loaded.");
       return;
     }
     setError(apiMessage(caught, "The station update could not be completed."));
@@ -292,16 +329,21 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
                   <h3>{station.name}</h3>
                   <p>{station.address_line_1}, {station.city}, {station.state}</p>
                 </div>
-                <label>
-                  Station status
-                  <select
-                    value={station.status}
-                    disabled={savingKey === `station-${station.id}`}
-                    onChange={(event) => void changeStationStatus(station, event.target.value as StationStatus)}
-                  >
-                    {STATION_STATUSES.map((status) => <option key={status} value={status}>{readable(status)}</option>)}
-                  </select>
-                </label>
+                <div className="station-card-controls">
+                  <button type="button" onClick={() => setEditingStationId((current) => current === station.id ? null : station.id)}>
+                    {editingStationId === station.id ? "Cancel editing" : "Edit details"}
+                  </button>
+                  <label>
+                    Station status
+                    <select
+                      value={station.status}
+                      disabled={savingKey === `station-${station.id}`}
+                      onChange={(event) => void changeStationStatus(station, event.target.value as StationStatus)}
+                    >
+                      {STATION_STATUSES.map((status) => <option key={status} value={status}>{readable(status)}</option>)}
+                    </select>
+                  </label>
+                </div>
               </div>
 
               <div className="admin-station-meta">
@@ -310,9 +352,20 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
                 <span>{station.charge_points.length} connector{station.charge_points.length === 1 ? "" : "s"}</span>
               </div>
 
+              {editingStationId === station.id && (
+                <StationEditForm
+                  key={`${station.id}-${station.version}`}
+                  station={station}
+                  saving={savingKey === `station-${station.id}`}
+                  onCancel={() => setEditingStationId(null)}
+                  onSave={(changes) => void saveStationDetails(station, changes)}
+                />
+              )}
+
               <div className="admin-point-list">
                 {station.charge_points.map((point) => (
-                  <div className="admin-point-row" key={point.id}>
+                  <div className="admin-point-shell" key={point.id}>
+                    <div className="admin-point-row">
                     <div>
                       <strong>{point.code}</strong>
                       <span>{readable(point.connector_type)} · {point.max_power_kw} kW · ₹{point.booking_fee.toFixed(2)}</span>
@@ -338,7 +391,18 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
                       />
                       Bookable
                     </label>
+                    <button className="point-edit-button" type="button" onClick={() => setEditingPointId((current) => current === point.id ? null : point.id)}>Edit</button>
                     <span className="point-version">v{point.version}</span>
+                    </div>
+                    {editingPointId === point.id && (
+                      <ChargePointEditForm
+                        key={`${point.id}-${point.version}`}
+                        point={point}
+                        saving={savingKey === `point-${point.id}`}
+                        onCancel={() => setEditingPointId(null)}
+                        onSave={(changes) => void saveChargePointDetails(station, point, changes)}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -355,6 +419,111 @@ export function StationAdminPanel({open, onClose}: {open: boolean; onClose: () =
         )}
       </section>
     </div>
+  );
+}
+
+function StationEditForm({
+  station,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  station: ManagedStation;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (changes: StationUpdateChanges) => void;
+}) {
+  const [details, setDetails] = useState(() => ({
+    name: station.name,
+    description: station.description ?? "",
+    address_line_1: station.address_line_1,
+    address_line_2: station.address_line_2 ?? "",
+    city: station.city,
+    state: station.state,
+    postal_code: station.postal_code,
+    country_code: station.country_code,
+    latitude: String(station.latitude),
+    longitude: String(station.longitude),
+    timezone: station.timezone,
+    phone: station.phone ?? "",
+    is_24_hours: station.is_24_hours,
+  }));
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSave({
+      name: details.name,
+      description: optional(details.description),
+      address_line_1: details.address_line_1,
+      address_line_2: optional(details.address_line_2),
+      city: details.city,
+      state: details.state,
+      postal_code: details.postal_code,
+      country_code: details.country_code,
+      latitude: requiredNumber(details.latitude, "latitude"),
+      longitude: requiredNumber(details.longitude, "longitude"),
+      timezone: details.timezone,
+      phone: optional(details.phone),
+      is_24_hours: details.is_24_hours,
+    });
+  }
+
+  return (
+    <form className="station-edit-form" onSubmit={submit}>
+      <div className="station-form-grid">
+        <label>Station name<input required minLength={2} maxLength={120} value={details.name} onChange={(event) => setDetails({...details, name: event.target.value})} /></label>
+        <label>Phone (optional)<input maxLength={20} value={details.phone} onChange={(event) => setDetails({...details, phone: event.target.value})} /></label>
+        <label className="station-form-wide">Description (optional)<textarea maxLength={2000} value={details.description} onChange={(event) => setDetails({...details, description: event.target.value})} /></label>
+        <label className="station-form-wide">Address line 1<input required minLength={3} value={details.address_line_1} onChange={(event) => setDetails({...details, address_line_1: event.target.value})} /></label>
+        <label className="station-form-wide">Address line 2 (optional)<input value={details.address_line_2} onChange={(event) => setDetails({...details, address_line_2: event.target.value})} /></label>
+        <label>City<input required minLength={2} value={details.city} onChange={(event) => setDetails({...details, city: event.target.value})} /></label>
+        <label>State<input required minLength={2} value={details.state} onChange={(event) => setDetails({...details, state: event.target.value})} /></label>
+        <label>Postal code<input required minLength={3} value={details.postal_code} onChange={(event) => setDetails({...details, postal_code: event.target.value})} /></label>
+        <label>Country code<input required minLength={2} maxLength={2} value={details.country_code} onChange={(event) => setDetails({...details, country_code: event.target.value.toUpperCase()})} /></label>
+        <label>Latitude<input required type="number" min="-90" max="90" step="0.000001" value={details.latitude} onChange={(event) => setDetails({...details, latitude: event.target.value})} /></label>
+        <label>Longitude<input required type="number" min="-180" max="180" step="0.000001" value={details.longitude} onChange={(event) => setDetails({...details, longitude: event.target.value})} /></label>
+        <label>Timezone<input required value={details.timezone} onChange={(event) => setDetails({...details, timezone: event.target.value})} /></label>
+        <label className="station-check"><input type="checkbox" checked={details.is_24_hours} onChange={(event) => setDetails({...details, is_24_hours: event.target.checked})} /> Open 24 hours</label>
+      </div>
+      <div className="edit-form-actions">
+        <button type="button" onClick={onCancel} disabled={saving}>Cancel</button>
+        <button type="submit" disabled={saving}>{saving ? "Saving..." : "Save station details"}</button>
+      </div>
+    </form>
+  );
+}
+
+function ChargePointEditForm({
+  point,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  point: ChargePoint;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (changes: ChargePointUpdateChanges) => void;
+}) {
+  const [maxPower, setMaxPower] = useState(String(point.max_power_kw));
+  const [bookingFee, setBookingFee] = useState(String(point.booking_fee));
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSave({
+      max_power_kw: requiredNumber(maxPower, "maximum power"),
+      booking_fee: requiredNumber(bookingFee, "booking fee"),
+    });
+  }
+
+  return (
+    <form className="point-edit-form" onSubmit={submit}>
+      <label>Maximum power (kW)<input required type="number" min="0.01" step="0.01" value={maxPower} onChange={(event) => setMaxPower(event.target.value)} /></label>
+      <label>Booking fee (₹)<input required type="number" min="0" step="0.01" value={bookingFee} onChange={(event) => setBookingFee(event.target.value)} /></label>
+      <div className="edit-form-actions">
+        <button type="button" onClick={onCancel} disabled={saving}>Cancel</button>
+        <button type="submit" disabled={saving}>{saving ? "Saving..." : "Save pricing"}</button>
+      </div>
+    </form>
   );
 }
 

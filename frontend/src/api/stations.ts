@@ -20,6 +20,30 @@ export type ChargePointStatus =
   | "maintenance"
   | "retired";
 
+export type StationUpdateChanges = Partial<{
+  name: string;
+  description: string | null;
+  address_line_1: string;
+  address_line_2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  country_code: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  phone: string | null;
+  is_24_hours: boolean;
+  status: StationStatus;
+}>;
+
+export type ChargePointUpdateChanges = Partial<{
+  max_power_kw: number;
+  booking_fee: number;
+  is_bookable: boolean;
+  status: ChargePointStatus;
+}>;
+
 export type StationSearch = Coordinates & {
   radiusKm: number;
 };
@@ -84,12 +108,20 @@ export async function updateOwnedStationStatus(
   version: number,
   status: StationStatus,
 ): Promise<ManagedStation> {
+  return updateOwnedStation(stationId, version, {status});
+}
+
+export async function updateOwnedStation(
+  stationId: string,
+  version: number,
+  changes: StationUpdateChanges,
+): Promise<ManagedStation> {
   const response = await requestJson<ManagedStationDetailResponse>(
     `/stations/${stationId}`,
     {
       method: "PATCH",
       authenticated: true,
-      body: JSON.stringify({version, status}),
+      body: JSON.stringify({version, ...changes}),
     },
   );
   return response.station;
@@ -99,7 +131,7 @@ export async function updateOwnedChargePoint(
   stationId: string,
   chargePointId: string,
   version: number,
-  changes: {status?: ChargePointStatus; is_bookable?: boolean},
+  changes: ChargePointUpdateChanges,
 ): Promise<ChargePoint> {
   const response = await requestJson<ChargePointUpdateResponse>(
     `/stations/${stationId}/charge-points/${chargePointId}`,
