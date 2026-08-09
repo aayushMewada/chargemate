@@ -7,7 +7,11 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
+from chargemate.auth.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RegisterUserRequest,
+)
 from chargemate.auth.tokens import (
     IssuedAccessToken,
     IssuedRefreshToken,
@@ -42,6 +46,10 @@ class AuthenticationError(Exception):
 
 class RefreshTokenError(Exception):
     """Raised when a refresh token cannot produce a new token pair."""
+
+
+class PasswordChangeError(Exception):
+    """Raised when an authenticated password change cannot be accepted."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +262,47 @@ def revoke_all_auth_sessions(user_id: UUID) -> int:
         raise
 
     return result.rowcount
+
+
+def change_user_password(
+    user_id: UUID,
+    data: ChangePasswordRequest,
+) -> None:
+    """Change a password and atomically revoke every login session."""
+
+    now = datetime.now(UTC)
+    try:
+        user = db.session.scalar(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+        )
+        if user is None or not user.check_password(
+            data.current_password.get_secret_value()
+        ):
+            raise PasswordChangeError("Current password is incorrect.")
+        new_password = data.new_password.get_secret_value()
+        if user.check_password(new_password):
+            raise PasswordChangeError(
+                "New password must be different from the current password."
+            )
+
+        user.set_password(new_password)
+        db.session.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.user_id == user.id,
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+        db.session.commit()
+    except PasswordChangeError:
+        db.session.rollback()
+        raise
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def _is_account_locked(user: User, now: datetime) -> bool:

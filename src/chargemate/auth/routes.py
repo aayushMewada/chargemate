@@ -5,13 +5,19 @@ from flask import Blueprint, Response, current_app, g, jsonify, request
 from pydantic import ValidationError
 
 from chargemate.auth.decorators import access_token_required
-from chargemate.auth.schemas import LoginRequest, RegisterUserRequest
+from chargemate.auth.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RegisterUserRequest,
+)
 from chargemate.auth.service import (
     AuthenticationError,
     IssuedSessionTokens,
+    PasswordChangeError,
     RefreshTokenError,
     RegistrationConflictError,
     authenticate_user,
+    change_user_password,
     create_auth_session,
     register_user,
     revoke_all_auth_sessions,
@@ -153,6 +159,26 @@ def logout_all() -> Response:
     return response
 
 
+@auth_blueprint.post("/change-password")
+@access_token_required
+def change_password() -> Response | tuple[dict[str, Any], int]:
+    """Replace the password and revoke every existing login session."""
+
+    try:
+        payload = ChangePasswordRequest.model_validate(
+            request.get_json(silent=True)
+        )
+        change_user_password(g.current_user.id, payload)
+    except ValidationError as error:
+        return _validation_error_response(error, "Password data is invalid.")
+    except PasswordChangeError as error:
+        return _error_response("password_change_rejected", str(error), 422)
+
+    response = Response(status=204)
+    _clear_refresh_cookie(response)
+    return response
+
+
 def _token_response(user: User, issued: IssuedSessionTokens) -> Response:
     """Return an access token and rotate the protected refresh cookie."""
     response = jsonify(
@@ -238,3 +264,4 @@ def _clear_refresh_cookie(response: Response) -> None:
         secure=current_app.config["REFRESH_COOKIE_SECURE"],
         samesite=current_app.config["REFRESH_COOKIE_SAMESITE"],
     )
+    PasswordChangeError,

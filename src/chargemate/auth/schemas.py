@@ -68,3 +68,12 @@ class LoginRequest(BaseModel):
         if isinstance(value, str):
             return value.strip().lower()
         return value
+
+
+class ChangePasswordRequest(BaseModel):
+    """Validated current and replacement passwords for an active account."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: Annotated[SecretStr, Field(min_length=1, max_length=128)]
+    new_password: Annotated[SecretStr, Field(min_length=12, max_length=128)]

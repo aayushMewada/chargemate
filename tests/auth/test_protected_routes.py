@@ -102,6 +102,10 @@ def test_logout_revokes_current_refresh_session(client: FlaskClient) -> None:
     )
     refresh_response = client.post("/auth/refresh")
     assert refresh_response.status_code == 401
+    assert client.get(
+        "/auth/me",
+        headers=bearer_header(access_token),
+    ).status_code == 401
 
 
 def test_logout_all_revokes_every_refresh_session(client: FlaskClient) -> None:
@@ -132,3 +136,67 @@ def test_logout_all_revokes_every_refresh_session(client: FlaskClient) -> None:
         assert client.post("/auth/refresh").status_code == 401
 
     assert first_access_token != second_access_token
+    for token in (first_access_token, second_access_token):
+        assert client.get(
+            "/auth/me",
+            headers=bearer_header(token),
+        ).status_code == 401
+
+
+def test_password_change_revokes_tokens_and_replaces_password(
+    client: FlaskClient,
+) -> None:
+    access_token = login_and_get_access_token(client)
+    new_password = "a-new-long-test-password"
+
+    response = client.post(
+        "/auth/change-password",
+        headers=bearer_header(access_token),
+        json={
+            "current_password": registration_payload()["password"],
+            "new_password": new_password,
+        },
+    )
+
+    assert response.status_code == 204
+    assert client.get_cookie("refresh_token", path="/auth") is None
+    assert client.get(
+        "/auth/me",
+        headers=bearer_header(access_token),
+    ).status_code == 401
+    assert client.post(
+        "/auth/login",
+        json={
+            "identifier": registration_payload()["email"],
+            "password": registration_payload()["password"],
+        },
+    ).status_code == 401
+    assert client.post(
+        "/auth/login",
+        json={
+            "identifier": registration_payload()["email"],
+            "password": new_password,
+        },
+    ).status_code == 200
+
+
+def test_password_change_rejects_wrong_current_password(
+    client: FlaskClient,
+) -> None:
+    access_token = login_and_get_access_token(client)
+
+    response = client.post(
+        "/auth/change-password",
+        headers=bearer_header(access_token),
+        json={
+            "current_password": "wrong-current-password",
+            "new_password": "a-new-long-test-password",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"]["code"] == "password_change_rejected"
+    assert client.get(
+        "/auth/me",
+        headers=bearer_header(access_token),
+    ).status_code == 200

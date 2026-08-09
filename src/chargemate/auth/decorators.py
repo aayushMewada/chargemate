@@ -1,12 +1,15 @@
 from collections.abc import Callable
+from datetime import UTC, datetime
 from functools import wraps
 from typing import Any, ParamSpec, TypeVar
 from uuid import UUID
 
 from flask import g, request
+from sqlalchemy import select
 
 from chargemate.auth.tokens import AccessTokenError, decode_access_token
 from chargemate.extensions import db
+from chargemate.models.auth_session import AuthSession
 from chargemate.models.user import User, UserRole
 
 
@@ -29,8 +32,22 @@ def access_token_required(view: Callable[P, R]) -> Callable[P, R | tuple[dict, i
         except AccessTokenError:
             return _unauthorized_response()
 
-        user = db.session.get(User, UUID(claims["sub"]))
-        if user is None or not user.is_active:
+        try:
+            user_id = UUID(claims["sub"])
+            session_id = UUID(claims["sid"])
+        except (KeyError, TypeError, ValueError):
+            return _unauthorized_response()
+
+        user = db.session.get(User, user_id)
+        active_session_id = db.session.scalar(
+            select(AuthSession.id).where(
+                AuthSession.id == session_id,
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(UTC),
+            )
+        )
+        if user is None or not user.is_active or active_session_id is None:
             return _unauthorized_response()
 
         g.current_user = user
