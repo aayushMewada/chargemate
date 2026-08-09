@@ -69,8 +69,8 @@ export function ChargingOperationsPanel({open, onClose}: {open: boolean; onClose
       await loadOperations();
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "charging_session_state_conflict") {
-        setError("This booking or session changed. The operations queue has been refreshed.");
         await loadOperations();
+        setError("This booking or session changed. The operations queue has been refreshed.");
       } else if (caught instanceof ApiError && caught.code === "outside_charging_window") {
         setError("This booking is outside its permitted start window.");
       } else {
