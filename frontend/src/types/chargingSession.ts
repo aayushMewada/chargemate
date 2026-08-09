@@ -40,3 +40,51 @@ export type ChargingSessionPage = {
     pages: number;
   };
 };
+
+export type ChargingOperation = {
+  booking: {
+    id: string;
+    status: "confirmed" | "active";
+    version: number;
+    starts_at: string;
+    ends_at: string;
+  };
+  customer: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
+  charge_point: {
+    id: string;
+    code: string;
+    connector_type: string;
+    max_power_kw: number;
+  };
+  station: {
+    id: string;
+    name: string;
+    city: string;
+    state: string;
+  };
+  charging_session: {
+    id: string;
+    status: "active";
+    version: number;
+    started_at: string;
+    meter_start_kwh: number;
+  } | null;
+};
+
+export type ChargingOperationPage = {
+  operations: ChargingOperation[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total: number;
+    pages: number;
+  };
+};
+
+export type ChargingSessionResponse = {
+  charging_session: ChargingSession;
+};

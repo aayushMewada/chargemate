@@ -288,6 +288,31 @@ h1 span {color: var(--lime);}
 .bookable-toggle input {width: 16px; height: 16px; accent-color: #78a521;}
 .point-version {color: #829089; font: 800 10px "Manrope"; text-align: right;}
 
+.operations-backdrop {position: fixed; z-index: 1900; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(2,13,10,.78); backdrop-filter: blur(7px);}
+.operations-panel {width: min(980px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; padding: 28px; color: #182a24; background: #f1f5ef; border-radius: 20px; box-shadow: 0 35px 100px rgba(0,0,0,.46);}
+.operations-header {display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 24px;}
+.operations-header .eyebrow {color: #577d14;}
+.operations-header h2 {margin: 0 0 4px; font-size: 36px; letter-spacing: -.04em;}
+.operations-header > div > span {color: #74857d; font-size: 13px;}
+.operations-header > button {width: 38px; height: 38px; color: #42564d; background: transparent; border: 1px solid #ccd8d1; border-radius: 50%; font-size: 23px; cursor: pointer;}
+.operations-list {display: grid; gap: 13px;}
+.operation-card {padding: 19px; background: white; border: 1px solid #d6e0da; border-radius: 13px;}
+.operation-heading {display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;}
+.operation-heading h3 {margin: 10px 0 3px; font-size: 19px;}
+.operation-heading p {margin: 0; color: #75857e; font-size: 12px;}
+.operation-heading > strong {padding: 7px 9px; color: #32530f; background: #e9f6d8; border-radius: 7px; font: 800 13px "Manrope";}
+.operation-facts {display: grid; grid-template-columns: 1.2fr 1.2fr 1fr 1fr; gap: 14px; padding: 15px 0; margin-top: 15px; border-top: 1px solid #e3e9e6; border-bottom: 1px solid #e3e9e6;}
+.operation-facts div {display: grid; gap: 3px;}
+.operation-facts span {color: #829089; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;}
+.operation-facts strong {font-size: 11px; text-transform: capitalize;}
+.operation-meter-start {margin: 13px 0 0; color: #607269; font-size: 11px;}
+.meter-action {display: flex; align-items: end; gap: 11px; margin-top: 14px;}
+.meter-action label {display: grid; flex: 1; gap: 6px; color: #566a60; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;}
+.meter-action input {height: 42px; padding: 0 11px; color: #20342b; background: #f8faf8; border: 1px solid #cbd7d1; border-radius: 8px;}
+.meter-action button {height: 42px; padding: 0 17px; color: #f0f8f3; background: #163f33; border: 1px solid #163f33; border-radius: 8px; font-weight: 800; cursor: pointer;}
+.meter-action button:disabled {opacity: .6; cursor: wait;}
+.operation-version {display: block; margin-top: 9px; color: #8a9891; font-size: 9px; text-align: right;}
+
 @media (max-width: 900px) {
   .hero {grid-template-columns: 1fr; min-height: auto; padding: 90px 0;}
   .hero-stat {display: none;}
@@ -336,4 +361,8 @@ h1 span {color: var(--lime);}
   .admin-station-heading label {width: 100%;}
   .admin-point-row {grid-template-columns: 1fr 1fr;}
   .admin-point-row > div {grid-column: 1 / -1;}
+  .operations-backdrop {padding: 0;}
+  .operations-panel {height: 100%; max-height: none; padding: 21px 16px; border-radius: 0;}
+  .operation-facts {grid-template-columns: 1fr 1fr;}
+  .meter-action {align-items: stretch; flex-direction: column;}
 }
