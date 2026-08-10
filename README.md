@@ -124,11 +124,11 @@ The complete machine-readable contract is in
 | Area | Important endpoints |
 | --- | --- |
 | Health | `GET /health`, `GET /health/ready` |
-| Authentication | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET /auth/me`, `POST /auth/logout` |
+| Authentication | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/logout-all`, `POST /auth/change-password` |
 | Stations | `GET /stations`, `GET /stations/external`, `POST /stations`, `PATCH /stations/{id}` |
 | Bookings | `POST /bookings`, `GET /bookings/me`, `POST /bookings/{id}/cancel` |
 | Payments | `POST /payments/orders`, `POST /payments/verify`, `POST /payments/webhooks/razorpay` |
-| Charging sessions | `POST /charging-sessions`, `POST /charging-sessions/{id}/complete`, `GET /charging-sessions/me` |
+| Charging sessions | `GET /charging-sessions/operations`, `POST /charging-sessions`, `POST /charging-sessions/{id}/complete`, `GET /charging-sessions/me` |
 
 Protected endpoints accept an access token through:
 

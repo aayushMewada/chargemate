@@ -8,6 +8,8 @@ info:
 servers:
   - url: http://127.0.0.1:5000
     description: Local development
+  - url: http://127.0.0.1:8080/api
+    description: Production-style Docker Compose through Nginx
 tags:
   - name: Health
   - name: Authentication
@@ -126,6 +128,26 @@ paths:
           description: All sessions revoked
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /auth/change-password:
+    post:
+      tags: [Authentication]
+      summary: Change the current user's password and revoke all sessions
+      description: On success, clears the refresh cookie and requires a new login.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Password changed and all sessions revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /stations:
     get:
@@ -388,6 +410,28 @@ paths:
         "400":
           description: Invalid signature or payload
 
+  /charging-sessions/operations:
+    get:
+      tags: [Charging sessions]
+      summary: List bookings an operator can start or complete
+      description: Requires station_admin or system_admin role and respects station ownership.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: station_id
+          in: query
+          schema: {type: string, format: uuid}
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated station charging-operation queue
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
   /charging-sessions:
     post:
       tags: [Charging sessions]
@@ -579,6 +623,13 @@ components:
       properties:
         identifier: {type: string, minLength: 3, maxLength: 255}
         password: {type: string, format: password, minLength: 1, maxLength: 128}
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password: {type: string, format: password, minLength: 1, maxLength: 128}
+        new_password: {type: string, format: password, minLength: 12, maxLength: 128}
     TokenResponse:
       type: object
       required: [access_token, token_type, expires_in, user]
