@@ -46,13 +46,14 @@ boundaries. SQLAlchemy models describe persistent state, while PostgreSQL is
 the source of truth. Redis is used only for temporary data such as cached
 searches, rate-limit counters, and job queues.
 
-Production-style Docker Compose runs five services:
+Production-style Docker Compose runs six services:
 
 - `postgres`: durable relational and geospatial data
 - `redis`: cache, rate limits, and RQ queue storage
 - `migrate`: applies Alembic migrations and exits successfully
 - `api`: serves Flask through Gunicorn
 - `worker`: processes maintenance jobs from Redis
+- `web`: serves the React build through Nginx and proxies `/api` to Flask
 
 ## Local setup on Windows
 
@@ -97,11 +98,12 @@ docker compose up --build -d
 docker compose ps -a
 ```
 
-The `migrate` service should exit with code `0`; the API, worker, PostgreSQL,
-and Redis services should remain running. Check readiness with:
+The `migrate` service should exit with code `0`; the web, API, worker,
+PostgreSQL, and Redis services should remain running. Open the production-style
+site at `http://127.0.0.1:8080` and check Flask readiness through Nginx with:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:5000/health/ready
+Invoke-RestMethod http://127.0.0.1:8080/api/health/ready
 ```
 
 Enqueue one run of the maintenance jobs:
@@ -159,8 +161,24 @@ Run the complete test suite from the activated virtual environment:
 python -m pytest -q
 ```
 
-GitHub Actions repeats the tests, applies all migrations to PostGIS, and builds
-the production Docker image for pushes to `main` and pull requests.
+Run frontend unit/component tests, the production build, and Playwright browser
+tests from `frontend`:
+
+```powershell
+npm test
+npm run build
+npm run test:e2e
+```
+
+GitHub Actions repeats the backend and frontend tests, applies all migrations
+to PostGIS, and builds the production Docker images for pushes to `main` and
+pull requests.
+
+## Interview preparation
+
+For the complete build history, architecture flows, technology decisions,
+external integrations, concurrency strategy, demo script, and interview Q&A,
+read [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md).
 
 ## Configuration
 
